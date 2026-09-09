@@ -1,0 +1,6 @@
+'use client';
+import { useState } from 'react';
+import Link from 'next/link';
+import { getSupabase } from '@/lib/supabase';
+export default function Auth(){const [email,setEmail]=useState('');const [busy,setBusy]=useState(false);const [status,setStatus]=useState('');return <form className="auth-form" onSubmit={async e=>{e.preventDefault();const supabase=getSupabase();if(!supabase){setStatus('Sign-in is not configured for this demo. You can explore and save on this device.');return;}setBusy(true);try{const {error}=await supabase.auth.signInWithOtp({email,options:{emailRedirectTo:`${window.location.origin}/profile`}});setStatus(error?error.message:'Check your email for a sign-in link.');}catch{setStatus('Unable to connect. Please try again.');}finally{setBusy(false);}}}><div className="eyebrow">WELCOME TO YOUR ATMOSPHERE</div><h1 style={{marginTop:15}}>Make yourself at home.</h1><p>Receive a secure sign-in link by email.</p><label>Email address<input type="email" autoComplete="email" required value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@example.com"/></label><button className="primary" disabled={busy}>{busy?'Sending…':'Send sign-in link'}</button><output className="auth-status">{status}</output><Link href="/">Continue exploring the demo</Link></form>;}
+

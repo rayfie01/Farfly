@@ -13,7 +13,7 @@
     "format": "oxfmt",
     "dev:next": "next dev",
     "build:next": "next build",
-    "test": "node scripts/test.mjs"
+    "test": "node scripts/test.mjs && node scripts/test-pinterest.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",

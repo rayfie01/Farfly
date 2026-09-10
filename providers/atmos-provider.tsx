@@ -4,8 +4,11 @@ import { tracks, boards } from '@/mock/catalog';
 import { aggregate, moodName, rankTracks } from '@/lib/mood';
 import { neutral, type Track, type Signal, type Session, type Pin } from '@/lib/types';
 import { toast } from 'sonner';
+import { usePinterest } from './use-pinterest';
 
 function useAtmosState() {
+  const pinterest=usePinterest();
+  const activeBoards=[...enabledPinterestBoards(pinterest.connected,pinterest.selectedBoards)];
   const audio = useRef<HTMLAudioElement>(null);
   const [queue,setQueue] = useState<Track[]>(tracks);
   const [current,setCurrent] = useState<Track>(tracks[0]);
@@ -27,6 +30,15 @@ function useAtmosState() {
   const [skipped,setSkipped] = useState<string[]>([]);
   const [sessions,setSessions] = useState<Session[]>([]);
   const [ready,setReady] = useState(false);
+  useEffect(()=>{
+    if(!pinterest.connected){
+      // Connection expiry is an external event: discard imported visual activity.
+      // oxlint-disable-next-line react/react-compiler
+      setSignals(s=>s.filter(x=>!x.pin.id.startsWith('pinterest-')));
+      setSavedPins(s=>s.filter(id=>!id.startsWith('pinterest-')));
+      setLikedPins(s=>s.filter(id=>!id.startsWith('pinterest-')));
+    }
+  },[pinterest.connected]);
   const intent = useRef(false);
   const failures = useRef(new Set<string>());
   const trackRef = useRef(current);
@@ -40,11 +52,11 @@ function useAtmosState() {
     }} catch { toast.error('Your saved collection could not be loaded.'); }
     setReady(true);
   },[]);
-  useEffect(()=>{if(ready) {try {localStorage.setItem('atmos:v1',JSON.stringify({savedPins,likedPins,likedTracks,sessions,adaptive,enabledBoards}));}catch{toast.error('Storage is full. New saves may not persist.');}}},[ready,savedPins,likedPins,likedTracks,sessions,adaptive,enabledBoards]);
+  useEffect(()=>{if(ready) {try {localStorage.setItem('atmos:v1',JSON.stringify({savedPins:savedPins.filter(id=>!id.startsWith('pinterest-')),likedPins:likedPins.filter(id=>!id.startsWith('pinterest-')),likedTracks,sessions,adaptive,enabledBoards}));}catch{toast.error('Storage is full. New saves may not persist.');}}},[ready,savedPins,likedPins,likedTracks,sessions,adaptive,enabledBoards]);
   useEffect(()=>{
     if(!adaptive || signals.length<3) return;
     const timer=setTimeout(()=>{
-      const nextMood=aggregate(signals.filter(s=>enabledBoards.includes(s.pin.board)));
+      const nextMood=aggregate(signals.filter(s=>(s.pin.id.startsWith('pinterest-')?pinterest.connected&&pinterest.selectedBoards.some(id=>s.pin.board==='pinterest-'+id):enabledBoards.includes(s.pin.board))));
       const change=Object.keys(mood).reduce((s,k)=>s+Math.abs(mood[k as keyof typeof mood]-nextMood[k as keyof typeof mood]),0);
       if(change>.15) {
         setMood(nextMood);
@@ -52,7 +64,7 @@ function useAtmosState() {
       }
     },800);
     return ()=>clearTimeout(timer);
-  },[signals,adaptive,enabledBoards,likedTracks,skipped,mood]);
+  },[signals,adaptive,enabledBoards,likedTracks,skipped,mood,pinterest.connected,pinterest.selectedBoards]);
   const play=useCallback(async()=>{
     if(!audio.current)return; intent.current=true; setError('');
     try {await audio.current.play();}catch(e){ if((e as DOMException).name !== 'AbortError'){intent.current=false;setPlaying(false);setError('Playback could not start. Press play to try again.');}}
@@ -82,7 +94,7 @@ function useAtmosState() {
   const seek=(value:number)=>{if(audio.current && Number.isFinite(value)){audio.current.currentTime=Math.min(duration,Math.max(0,value));setTime(value);}};
   const setVolume=(v:number)=>{setVolumeState(v);if(audio.current)audio.current.volume=v;};
   useEffect(()=>{if(audio.current)audio.current.volume=volume;},[volume]);
-  const signal=(pin:Pin,kind:Signal['kind'])=>{if(enabledBoards.includes(pin.board))setSignals(s=>[...s.slice(-29),{pin,kind,at:Date.now()}]);};
+  const signal=(pin:Pin,kind:Signal['kind'])=>{if(enabledBoards.includes(pin.board)||activeBoards.includes(pin.board))setSignals(s=>[...s.slice(-29),{pin,kind,at:Date.now()}]);};
   const savePin=(pin:Pin)=>{setSavedPins(s=>s.includes(pin.id)?s.filter(id=>id!==pin.id):[...s,pin.id]);signal(pin,'save');};
   const likePin=(pin:Pin)=>{setLikedPins(s=>s.includes(pin.id)?s.filter(id=>id!==pin.id):[...s,pin.id]);signal(pin,'like');};
   const likeTrack=(track:Track)=>setLikedTracks(s=>s.includes(track.id)?s.filter(id=>id!==track.id):[...s,track.id]);
@@ -95,11 +107,9 @@ function useAtmosState() {
   // Instrumental-only audio contains no spoken content to caption.
   // oxlint-disable-next-line jsx-a11y/media-has-caption
   const engine=<audio ref={audio} src={current.source} preload="metadata" onPlay={()=>setPlaying(true)} onPause={()=>setPlaying(false)} onPlaying={()=>setBuffering(false)} onWaiting={()=>setBuffering(true)} onCanPlay={()=>setBuffering(false)} onTimeUpdate={()=>setTime(audio.current?.currentTime || 0)} onDurationChange={()=>{const d=audio.current?.duration;if(d && Number.isFinite(d))setDuration(d);}} onEnded={()=>{intent.current=true;next();}} onError={()=>{failures.current.add(current.id);setBuffering(false);toast.error('This track is unavailable. Trying the next one.');next();}} />;
-  return {engine,current,queue,history,playing,time,duration,volume,buffering,error,immersive,setImmersive,play,pause,toggle:()=>playing?pause():void play(),next,previous,seek,setVolume,playTrack,mood,name,signal,signals,adaptive,setAdaptive,enabledBoards,setEnabledBoards,savedPins,likedPins,likedTracks,sessions,savePin,likePin,likeTrack,saveSession,openSession,clearHistory,removeSession:(id:string)=>setSessions(s=>s.filter(x=>x.id!==id))};
+  return {pinterest,engine,current,queue,history,playing,time,duration,volume,buffering,error,immersive,setImmersive,play,pause,toggle:()=>playing?pause():void play(),next,previous,seek,setVolume,playTrack,mood,name,signal,signals,adaptive,setAdaptive,enabledBoards,setEnabledBoards,savedPins,likedPins,likedTracks,sessions,savePin,likePin,likeTrack,saveSession,openSession,clearHistory,removeSession:(id:string)=>setSessions(s=>s.filter(x=>x.id!==id))};
 }
+function enabledPinterestBoards(connected:boolean,ids:string[]){return connected?ids.map(id=>'pinterest-'+id):[];}
 const AtmosContext=createContext<ReturnType<typeof useAtmosState>|null>(null);
 export function AtmosProvider({children}:{children:ReactNode}) {const value=useAtmosState();return <AtmosContext.Provider value={value}>{value.engine}{children}</AtmosContext.Provider>;}
 export function useAtmos(){const value=useContext(AtmosContext);if(!value)throw new Error('AtmosProvider is required');return value;}
-
-
-

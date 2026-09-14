@@ -14,7 +14,7 @@ The code uses the Next.js App Router API, React, TypeScript, Tailwind 4, Motion,
 - `providers/atmos-provider.tsx`: global audio element, playback intent, metadata, history, queue, errors, preferences, feedback, and device-local demo collections. Mounted once in the root layout.
 - `components/player.tsx`: mini-player and full-screen player share the same state and audio element. Horizontal drag, arrow keys, card selection, seek, volume, play/pause and queue controls.
 - `lib/mood.ts`: bounded 30-interaction rolling context, exponential recency weighting, mood naming, multi-concept music queries, playability filtering and ranking with likes/skip penalties. Recomputes after 800 ms of inactivity and only replaces upcoming tracks after meaningful change.
-- `lib/providers/`: typed music, visual and vision interfaces; functional mock implementations; server-side SoundCloud and Pinterest adapter foundations; validated, cached, vendor-neutral vision adapter.
+- `lib/providers/`: typed music, visual and vision interfaces; functional mock implementations; server-side Jamendo music and Pinterest adapters; validated, cached, vendor-neutral vision adapter.
 - `mock/catalog.ts`: curated development content, explicit mood descriptors, original track metadata and approximate artwork palettes.
 - `supabase/schema.sql`: unapplied PostgreSQL schema proposal with ownership policies and indexes.
 
@@ -43,9 +43,13 @@ Create or select your Supabase project, set `NEXT_PUBLIC_SUPABASE_URL` and `NEXT
 
 For the schema: use the current Supabase CLI to create a new migration, copy the reviewed `supabase/schema.sql` into it, apply in a development database, run advisors, and test multi-user ownership before production. This SQL has **not** been applied or validated against a live database. Add ownership validation of foreign-key references before exposing interaction writes. The current demo collection is device-local; authenticated cloud synchronization and account UI are still to be implemented.
 
-## SoundCloud setup and remaining work
+## Jamendo music
 
-Register an approved SoundCloud app. Configure client ID, client secret and redirect URI. Implement OAuth authorization code exchange, refresh, CSRF/state protection and encrypted per-user token storage. Construct `SoundCloudMusicProvider` only on the server with the authenticated account's access token. It uses official search, metadata and streams endpoints. Resolve every candidate's playable source before adding it to the queue; blocked tracks and unsupported stream formats must be skipped. Add supported HLS playback if required by returned streams. Keep the visible SoundCloud creator attribution and permalink action for live tracks. Verify current attribution and access requirements with your approved app before launch.
+Set server-side `JAMENDO_CLIENT_ID` to your application's client ID from https://devportal.jamendo.com, then restart or redeploy. No listener OAuth is required for public track discovery. `/api/music?mood=calm` accepts six fixed mood names, caches metadata for five minutes per server instance and deduplicates concurrent requests. The global player fetches recommendations when the dominant visual mood changes and preserves an active track. With no key or an API failure, original demo music stays explicitly labelled.
+
+Artists, track links and Creative Commons licenses appear in the immersive player. Audio streams directly from Jamendo; no downloads, audio extraction or server audio caching are provided. The free API is subject to Jamendo's noncommercial terms and each track's license; do not assume a commercial license. Confirm the app's permitted use in your developer account before activation. Instance caching is not a global abuse limit; configure platform rate limits for a large public launch.
+
+Validation uses mocked API responses. Live catalog/playback testing requires your client ID. Keep `PROVIDER_MODE=mock` for the independent demo visual endpoint; it does not disable Jamendo or Pinterest. See `JAMENDO.md` for activation checks.
 
 ## Pinterest setup and remaining work
 
@@ -59,10 +63,10 @@ Inject a server-side vision-capable inference call into `VisionModelProvider`. I
 
 Photos are supplied by Unsplash; every Pin detail includes the photographer and original source link. See https://unsplash.com/license. This is a small curated demonstration, not an image redistribution service.
 
-All audio was procedurally composed for this project: original chord beds, synthesized arpeggios and percussion, no sampled recordings. The generator is in `scripts/generate-audio.mjs`; its output is bundled in `public/audio`. You may use these generated development recordings in this application. Track names and Atmos Studio are demo metadata, not fabricated SoundCloud artists or responses.
+All audio was procedurally composed for this project: original chord beds, synthesized arpeggios and percussion, no sampled recordings. The generator is in `scripts/generate-audio.mjs`; its output is bundled in `public/audio`. You may use these generated development recordings in this application. Track names and Atmos Studio are demo metadata, not fabricated Jamendo artists or responses.
 
 ## Production boundary
 
 This deliverable proves the core experience. Production OAuth flows, persistent authenticated saves, operational rate limits, live AI, provider-stream testing, comprehensive personalization and database deployment remain explicitly unfinished. Do not present mock data as live recommendations. Review upstream dependency advisories before a public production launch.
 
-Documentation consulted: https://developers.soundcloud.com/docs/api/guide, https://developers.pinterest.com/docs/api/v5/introduction/, https://supabase.com/docs/reference/javascript/auth-signinwithotp.
+Documentation consulted: https://developer.jamendo.com/v3.0/tracks, https://developers.pinterest.com/docs/api/v5/introduction/, https://supabase.com/docs/reference/javascript/auth-signinwithotp.

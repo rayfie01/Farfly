@@ -4,6 +4,7 @@ import { tracks, boards } from '@/mock/catalog';
 import { aggregate, moodName, moodTags, rankTracks } from '@/lib/mood';
 import { neutral, type Track, type Signal, type Session, type Pin } from '@/lib/types';
 import { toast } from 'sonner';
+import { useVisualTheme } from './use-visual-theme';
 import { usePinterest } from './use-pinterest';
 
 function useAtmosState() {
@@ -25,6 +26,7 @@ function useAtmosState() {
   const [immersive,setImmersive] = useState(false);
   const [signals,setSignals] = useState<Signal[]>([]);
   const [mood,setMood] = useState(neutral);
+  const visualTheme=useVisualTheme(mood);
   const [adaptive,setAdaptive] = useState(true);
   const [enabledBoards,setEnabledBoards] = useState<string[]>(boards);
   const [savedPins,setSavedPins] = useState<string[]>([]);
@@ -136,12 +138,13 @@ function useAtmosState() {
   // Music-only player; attribution and track metadata are provided in the player.
   // oxlint-disable-next-line jsx-a11y/media-has-caption
   const engine=<audio ref={audio} src={current.source} preload="metadata" onPlay={()=>setPlaying(true)} onPause={()=>setPlaying(false)} onPlaying={()=>setBuffering(false)} onWaiting={()=>setBuffering(true)} onCanPlay={()=>setBuffering(false)} onTimeUpdate={()=>setTime(audio.current?.currentTime || 0)} onDurationChange={()=>{const d=audio.current?.duration;if(d && Number.isFinite(d))setDuration(d);}} onEnded={()=>{intent.current=true;next();}} onError={()=>{failures.current.add(current.id);setBuffering(false);toast.error('This track is unavailable. Trying the next one.');next();}} />;
-  return {catalog,savedTracks,musicStatus,pinterest,engine,current,queue,history,playing,time,duration,volume,buffering,error,immersive,setImmersive,play,pause,toggle:()=>playing?pause():void play(),next,previous,seek,setVolume,playTrack,mood,name,signal,signals,adaptive,setAdaptive,enabledBoards,setEnabledBoards,savedPins,likedPins,likedTracks,sessions,savePin,likePin,likeTrack,saveSession,openSession,clearHistory,removeSession:(id:string)=>setSessions(s=>s.filter(x=>x.id!==id))};
+  return {...visualTheme,catalog,savedTracks,musicStatus,pinterest,engine,current,queue,history,playing,time,duration,volume,buffering,error,immersive,setImmersive,play,pause,toggle:()=>playing?pause():void play(),next,previous,seek,setVolume,playTrack,mood,name,signal,signals,adaptive,setAdaptive,enabledBoards,setEnabledBoards,savedPins,likedPins,likedTracks,sessions,savePin,likePin,likeTrack,saveSession,openSession,clearHistory,removeSession:(id:string)=>setSessions(s=>s.filter(x=>x.id!==id))};
 }
 function enabledPinterestBoards(connected:boolean,ids:string[]){return connected?ids.map(id=>'pinterest-'+id):[];}
 const AtmosContext=createContext<ReturnType<typeof useAtmosState>|null>(null);
 export function AtmosProvider({children}:{children:ReactNode}) {const value=useAtmosState();return <AtmosContext.Provider value={value}>{value.engine}{children}</AtmosContext.Provider>;}
 export function useAtmos(){const value=useContext(AtmosContext);if(!value)throw new Error('AtmosProvider is required');return value;}
+
 
 
 

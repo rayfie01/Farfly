@@ -13,7 +13,7 @@
     "format": "oxfmt",
     "dev:next": "next dev",
     "build:next": "next build",
-    "test": "node scripts/test.mjs && node scripts/test-pinterest.mjs && node scripts/test-jamendo.mjs"
+    "test": "node scripts/test.mjs && node scripts/test-pinterest.mjs && node scripts/test-jamendo.mjs && node scripts/test-visual-theme.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",
@@ -60,3 +60,4 @@
   },
   "type": "module"
 }
+

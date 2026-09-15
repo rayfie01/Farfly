@@ -22,5 +22,16 @@ assert.equal(paletteFromPixels([240,240,240,255]).dark,false);
 assert.equal(paletteFromPixels([128,128,128,255]).saturation,0);
 assert.equal(paletteFromPixels([0,0,255,0,255,0,0,255]).hue,0);
 assert.ok(Number.isFinite(paletteFromPixels([]).hue));
+const {visualPalettes}=await import(await moduleUrl('../mock/visual-palettes.ts'));
+const {pins}=await import(await moduleUrl('../mock/catalog.ts'));
+for(const pin of pins){
+ const palette=visualPalettes[new URL(pin.image).pathname.slice(1)];
+ assert.ok(palette,`Missing offline palette: ${pin.title}`);
+ assert.ok(Number.isFinite(palette.hue)&&palette.saturation>=0&&palette.saturation<=55);
+}
+assert.ok(new Set(Object.values(visualPalettes).map(p=>Math.round(p.hue))).size>8);
+assert.equal(visualPalettes['photo-1534274988757-a28bf1a57c17'].dark,true);
+assert.equal(visualPalettes['photo-1582794543139-8ac9cb0f7b11'].dark,false);
+console.log('PASS: all existing pictures have image-specific palettes without network access.');
 console.log('PASS: visual palette hue, brightness, monochrome, transparency and empty images.');
 

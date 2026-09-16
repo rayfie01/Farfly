@@ -8,7 +8,7 @@ const resultSnapshot=()=>new URLSearchParams(window.location.search).get('result
 export default function PinterestPage(){
  const {pinterest:p}=useAtmos();
  const result=useSyncExternalStore(subscribe,resultSnapshot,()=> '');
- const message=results[result]||'';
+ const message=result==='connected'?(p.checking?'Checking your Pinterest connection...':p.connected?results.connected:'Your Pinterest session has ended. Reconnect to browse your boards.'):(results[result]||'');
  return <div className="profile-layout">
   <div className="section-heading"><div className="eyebrow">YOUR VISUAL WORLDS</div><h1>Pinterest, at your pace.</h1><p>Explore your selected boards with Far.Fly’s original soundtrack.</p></div>
   {message&&<output className="demo-notice">{message}</output>}
@@ -27,3 +27,4 @@ export default function PinterestPage(){
   <p><Link href="/profile">Back to profile</Link> · <Link href="/">Explore Far.Fly</Link></p>
  </div>;
 }
+

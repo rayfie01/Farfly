@@ -1,7 +1,7 @@
 import { ProviderError, type VisualProvider } from './contracts';
 import { neutral, type Pin, type MoodVector } from '../types';
 type Board={id:string;name:string};
-type PinterestPin={id:string;title?:string;description?:string;media?:{images?:Record<string,{url:string;width:number;height:number}>}};
+type PinterestPin={id:string;title?:string;description?:string;dominant_color?:string;media?:{images?:Record<string,{url:string;width:number;height:number}>}};
 const themes:Record<keyof MoodVector,string[]>={dreamy:['dream','cloud','moon','pastel'],nostalgic:['vintage','memory','retro','old'],calm:['quiet','forest','ocean','book','minimal'],warm:['sunset','coffee','warm','summer'],energetic:['bright','dance','city','color'],cinematic:['night','rain','mountain','sea']};
 function describe(text:string) {
  const words:string[]=Array.from(text.toLowerCase().match(/[a-z]+/g)||[]);
@@ -31,8 +31,10 @@ export class PinterestProvider implements VisualProvider {
    const images=Object.values(p.media?.images||{}).filter(i=>i.width>0&&i.height>0&&imageUrl(i.url)).sort((a,b)=>b.width-a.width);
    const image=images[0];
    if(!image||!/^\d+$/.test(p.id))return [];
-   return [{id:'pinterest-'+p.id,title:p.title||'A visual from your world',image:imageUrl(image.url)!,width:image.width,height:image.height,board:'pinterest-'+boards[0],...describe((p.title||'')+' '+(p.description||'')),photographer:'View on Pinterest',source:'https://www.pinterest.com/pin/'+p.id+'/'}];
+   return [{id:'pinterest-'+p.id,title:p.title||'A visual from your world',image:imageUrl(image.url)!,...(typeof p.dominant_color==='string'&&/^#?[0-9a-f]{6}$/i.test(p.dominant_color)?{dominantColor:p.dominant_color}:{}),width:image.width,height:image.height,board:'pinterest-'+boards[0],...describe((p.title||'')+' '+(p.description||'')),photographer:'View on Pinterest',source:'https://www.pinterest.com/pin/'+p.id+'/'}];
   });
   return {items,cursor:r.bookmark||undefined};
  }
 }
+
+

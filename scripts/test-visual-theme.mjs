@@ -14,7 +14,7 @@ async function moduleUrl(path){
  const url='data:text/javascript;base64,'+Buffer.from(source).toString('base64');
  modules.set(path,url);return url;
 }
-const {paletteFromPixels}=await import(await moduleUrl('../lib/visual-theme.ts'));
+const {paletteFromPixels,paletteFromHex}=await import(await moduleUrl('../lib/visual-theme.ts'));
 assert.equal(paletteFromPixels([255,0,0,255]).hue,0);
 assert.equal(paletteFromPixels([0,0,255,255]).hue,240);
 assert.equal(paletteFromPixels([10,10,10,255]).dark,true);
@@ -34,4 +34,10 @@ assert.equal(visualPalettes['photo-1534274988757-a28bf1a57c17'].dark,true);
 assert.equal(visualPalettes['photo-1582794543139-8ac9cb0f7b11'].dark,false);
 console.log('PASS: all existing pictures have image-specific palettes without network access.');
 console.log('PASS: visual palette hue, brightness, monochrome, transparency and empty images.');
+
+assert.equal(paletteFromHex('#ff0000').hue,0);
+assert.equal(paletteFromHex('0000FF').hue,240);
+assert.equal(paletteFromHex('#101010').dark,true);
+for(const invalid of [undefined,null,'red','#fff','#12345678','12345g',123456])assert.equal(paletteFromHex(invalid),null);
+console.log('PASS: provider colours accept six-digit hex and reject malformed values.');
 

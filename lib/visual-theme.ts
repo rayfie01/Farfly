@@ -14,3 +14,9 @@ export function paletteFromPixels(data:ArrayLike<number>):Palette{
  return {hue:(h+360)%360,saturation:d?Math.min(55,d/(1-Math.abs(2*l-1))*100):0,dark:count>0&&light/count<.34};
 }
 
+export function paletteFromHex(value:unknown):Palette|null {
+ if(typeof value!=='string'||!/^#?[0-9a-f]{6}$/i.test(value))return null;
+ const hex=value.replace('#','');
+ return paletteFromPixels([parseInt(hex.slice(0,2),16),parseInt(hex.slice(2,4),16),parseInt(hex.slice(4,6),16),255]);
+}
+

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { moodPalette, paletteFromPixels, type Palette, type ThemeMode } from '@/lib/visual-theme';
+import { moodPalette, paletteFromPixels, paletteFromHex, type Palette, type ThemeMode } from '@/lib/visual-theme';
 import type { Pin, MoodVector } from '@/lib/types';
 import { visualPalettes } from '@/mock/visual-palettes';
 const cache=new Map<string,Palette>();
@@ -13,8 +13,8 @@ export function useVisualTheme(mood:MoodVector){
   const request=++version.current;
   // Match the image, not its Pin ID: saved pictures and feed pictures share a palette.
   const photoKey=new URL(pin.image,window.location.origin).pathname.split('/').pop()!;
-  const known=visualPalettes[photoKey];
-  const fallback=known||moodPalette(pin.mood);setPalette(cache.get(pin.image)||fallback);
+  const known=paletteFromHex(pin.dominantColor)||visualPalettes[photoKey];
+  const fallback=known||moodPalette(pin.mood);setPalette(known||cache.get(pin.image)||fallback);
   if(known)return;
   if(cache.has(pin.image))return;
   const img=new Image();img.crossOrigin='anonymous';img.referrerPolicy='no-referrer';

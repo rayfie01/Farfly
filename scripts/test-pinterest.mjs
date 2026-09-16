@@ -58,14 +58,14 @@ globalThis.fetch=async(url,options)=>{
  assert.equal(options.cache,'no-store');
  if((typeof url==='string'?url:url instanceof URL?url.href:url.url).includes('/boards?'))return Response.json({items:[{id:'123',name:'Forest'}],bookmark:'next-board'});
  return Response.json({items:[
- {id:'456',title:'Quiet forest',media:{images:{original:{url:'https://i.pinimg.com/test.jpg',width:600,height:900}}}},
+ {id:'456',title:'Quiet forest',dominant_color:'#13579b',media:{images:{original:{url:'https://i.pinimg.com/test.jpg',width:600,height:900}}}},
  {id:'789',media:{images:{original:{url:'https://attacker.example/track.jpg',width:10,height:10}}}}
  ],bookmark:'next-pin'});
 };
 const boards=await (await call('boards',{headers:auth})).json();assert.equal(boards.cursor,'next-board');
 const pins=await (await call('pins?board=123',{headers:auth})).json();
 assert.equal(pins.items.length,1);assert.equal(pins.items[0].source,'https://www.pinterest.com/pin/456/');
-assert.equal(pins.items[0].mood.calm,.85);assert.equal(pins.cursor,'next-pin');
+assert.equal(pins.items[0].dominantColor,'#13579b');assert.equal(pins.items[0].mood.calm,.85);assert.equal(pins.cursor,'next-pin');
 globalThis.fetch=async()=>Response.json({}, {status:429});
 assert.equal((await call('boards',{headers:auth})).status,429);
 globalThis.fetch=async()=>Response.json({}, {status:401});
@@ -73,3 +73,4 @@ const expired=await call('boards',{headers:auth});assert.equal(expired.status,40
 const disconnected=await call('connection',{method:'POST',headers:{origin,...auth}});
 assert.equal(disconnected.status,200);assert(disconnected.headers.getSetCookie().some(c=>c.includes('farfly_pin_session=;')));
 console.log('PASS: Pinterest encryption, expiry, CSRF, OAuth state, scopes, private cookies, gated configuration, board/Pin pagination, image allowlist, rate limits and disconnect.');
+

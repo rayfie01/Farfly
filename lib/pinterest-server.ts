@@ -3,6 +3,7 @@ import { PinterestProvider } from './providers/pinterest';
 import { ProviderError } from './providers/contracts';
 
 const sessionName='farfly_pin_session';
+const refreshName='farfly_pin_refresh';
 const stateName='farfly_pin_state';
 const headers={'Cache-Control':'private, no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff'};
 function settings() {
@@ -25,6 +26,7 @@ function setCookie(response:Response,name:string,value:string,secure:boolean,max
 function clear(response:Response,secure:boolean) {
   setCookie(response,sessionName,'',secure,0);
   setCookie(response,stateName,'',secure,0);
+  setCookie(response,refreshName,'',secure,0);
   return response;
 }
 export async function handlePinterest(request:Request):Promise<Response> {
@@ -67,32 +69,64 @@ export async function handlePinterest(request:Request):Promise<Response> {
         cache:'no-store',signal:AbortSignal.timeout(10000),
       });
       if(!tokenResponse.ok)return clear(finish('failed'),config.secure);
-      const token=await tokenResponse.json() as {access_token?:unknown;expires_in?:unknown;scope?:unknown};
+      const token=await tokenResponse.json() as {access_token?:unknown;expires_in?:unknown;scope?:unknown;refresh_token?:unknown;refresh_token_expires_in?:unknown};
       const scopes=typeof token.scope==='string'?token.scope.split(/[ ,]+/):[];
       if(typeof token.access_token!=='string'||typeof token.expires_in!=='number'||!Number.isFinite(token.expires_in)||token.expires_in<=60||!['boards:read','pins:read'].every(s=>scopes.includes(s)))return clear(finish('failed'),config.secure);
-      // Discard refresh tokens; the initial release deliberately reconnects after one hour.
-      const expires=Date.now()+Math.min(3600,token.expires_in-30)*1000;
+      const expires=Date.now()+(token.expires_in-30)*1000;
       const value=await seal('session',token.access_token,expires,config.key);
       if(value.length>3800)return clear(finish('failed'),config.secure);
       const response=finish('connected');
-      setCookie(response,sessionName,value,config.secure);
+      setCookie(response,sessionName,value,config.secure,Math.floor((expires-Date.now())/1000));
+      if(typeof token.refresh_token==='string'&&typeof token.refresh_token_expires_in==='number'&&Number.isFinite(token.refresh_token_expires_in)&&token.refresh_token_expires_in>60){
+        const age=Math.min(token.refresh_token_expires_in-30,60*86400);
+        const refresh=await seal('refresh',token.refresh_token,Date.now()+age*1000,config.key);
+        if(refresh.length>3800)return clear(finish('failed'),config.secure);
+        setCookie(response,refreshName,refresh,config.secure,Math.floor(age));
+      }
       return response;
     } catch {return clear(finish('failed'),config.secure);}
   }
-  const session=await unseal(cookie(request,sessionName),'session',config.key);
-  if(action==='connection')return json({configured:true,connected:!!session,expiresAt:session?.expires});
+  let session=await unseal(cookie(request,sessionName),'session',config.key);
+  const refresh=await unseal(cookie(request,refreshName),'refresh',config.key);
+  const renewed=new Headers();
+  if(refresh&&(!session||session.expires-Date.now()<5*60000)){
+    try {
+      const r=await fetch('https://api.pinterest.com/v5/oauth/token',{method:'POST',headers:{Authorization:'Basic '+btoa(config.id+':'+config.secret),'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'refresh_token',refresh_token:refresh.value}),cache:'no-store',signal:AbortSignal.timeout(10000)});
+      if(!r.ok){
+        if(r.status===400||r.status===401)return clear(json({error:'Pinterest access ended. Please reconnect.'},401),config.secure);
+        return json({error:'Pinterest is temporarily unavailable. Your connection has been kept.'},503);
+      }
+      const token=await r.json() as {access_token?:unknown;expires_in?:unknown;refresh_token?:unknown;refresh_token_expires_in?:unknown};
+      if(typeof token.access_token!=='string'||typeof token.expires_in!=='number'||!Number.isFinite(token.expires_in)||token.expires_in<=60)throw new Error('Invalid refresh response');
+      session={value:token.access_token,expires:Date.now()+(token.expires_in-30)*1000};
+      const response=json({});
+      const sealed=await seal('session',session.value,session.expires,config.key);
+      if(sealed.length>3800)throw new Error('Token too large');
+      setCookie(response,sessionName,sealed,config.secure,Math.floor((session.expires-Date.now())/1000));
+      if(typeof token.refresh_token==='string'&&typeof token.refresh_token_expires_in==='number'&&Number.isFinite(token.refresh_token_expires_in)&&token.refresh_token_expires_in>60){
+        const age=Math.min(token.refresh_token_expires_in-30,60*86400);
+        const sealedRefresh=await seal('refresh',token.refresh_token,Date.now()+age*1000,config.key);
+        if(sealedRefresh.length>3800)throw new Error('Token too large');
+        setCookie(response,refreshName,sealedRefresh,config.secure,Math.floor(age));
+      }
+      for(const value of response.headers.getSetCookie())renewed.append('Set-Cookie',value);
+    }catch{return json({error:'Pinterest could not renew right now. Please retry.'},503);}
+  }
+  const finishSession=(response:Response)=>{for(const value of renewed.getSetCookie())response.headers.append('Set-Cookie',value);return response;};
+  if(action==='connection')return finishSession(json({configured:true,connected:!!session,expiresAt:session?.expires}));
   if(!session)return clear(json({error:'Your Pinterest session ended. Please reconnect.'},401),config.secure);
   const provider=new PinterestProvider(session.value);
   try {
     const cursor=url.searchParams.get('cursor')||undefined;
     if(cursor && cursor.length>2000)return json({error:'Invalid page cursor.'},400);
-    if(action==='boards')return json(await provider.getBoardsPage(cursor));
+    if(action==='boards')return finishSession(json(await provider.getBoardsPage(cursor)));
     const board=url.searchParams.get('board')||'';
     if(!/^\d{1,30}$/.test(board))return json({error:'Choose a valid Pinterest board.'},400);
-    return json(await provider.getPins({boards:[board],cursor,limit:30}));
+    return finishSession(json(await provider.getPins({boards:[board],cursor,limit:30})));
   } catch(error) {
     const status=error instanceof ProviderError ? error.status : 503;
     const response=json({error:error instanceof ProviderError?error.message:'Pinterest is temporarily unavailable. Try again.'},status>=400&&status<=599?status:503);
-    return status===401?clear(response,config.secure):response;
+    return status===401?clear(response,config.secure):finishSession(response);
   }
 }
+

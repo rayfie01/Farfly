@@ -74,3 +74,24 @@ const disconnected=await call('connection',{method:'POST',headers:{origin,...aut
 assert.equal(disconnected.status,200);assert(disconnected.headers.getSetCookie().some(c=>c.includes('farfly_pin_session=;')));
 console.log('PASS: Pinterest encryption, expiry, CSRF, OAuth state, scopes, private cookies, gated configuration, board/Pin pagination, image allowlist, rate limits and disconnect.');
 
+// Renewable sessions survive access-token expiry without exposing credentials.
+const refreshCookie='farfly_pin_refresh='+await seal('refresh','private-refresh',Date.now()+86400000,secret);
+globalThis.fetch=async(url,options)=>{
+ assert.equal(new URLSearchParams(options.body).get('grant_type'),'refresh_token');
+ assert.equal(new URLSearchParams(options.body).get('refresh_token'),'private-refresh');
+ return Response.json({access_token:'renewed-access',expires_in:2592000,refresh_token:'rotated-refresh',refresh_token_expires_in:5184000});
+};
+const renewed=await call('connection',{headers:{cookie:refreshCookie}});
+assert.equal((await renewed.json()).connected,true);
+assert.equal(renewed.headers.getSetCookie().length,2);
+assert(renewed.headers.getSetCookie().every(c=>c.includes('HttpOnly')&&c.includes('Max-Age=')));
+assert(!renewed.headers.getSetCookie().join('').includes('rotated-refresh'));
+globalThis.fetch=async()=>Response.json({}, {status:503});
+const temporary=await call('connection',{headers:{cookie:refreshCookie}});
+assert.equal(temporary.status,503);assert.equal(temporary.headers.getSetCookie().length,0);
+globalThis.fetch=async()=>Response.json({}, {status:400});
+const revoked=await call('connection',{headers:{cookie:refreshCookie}});
+assert.equal(revoked.status,401);assert(revoked.headers.getSetCookie().some(c=>c.startsWith('farfly_pin_refresh=;')&&c.includes('Max-Age=0')));
+assert(disconnected.headers.getSetCookie().some(c=>c.startsWith('farfly_pin_refresh=;')));
+console.log('PASS: persistent refresh, rotation, transient retry, invalid refresh and logout cleanup.');
+

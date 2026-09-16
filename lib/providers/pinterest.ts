@@ -1,6 +1,6 @@
 import { ProviderError, type VisualProvider } from './contracts';
 import { neutral, type Pin, type MoodVector } from '../types';
-type Board={id:string;name:string};
+type Board={id:string;name:string;pin_count?:number;media?:{image_cover_url?:string}};
 type PinterestPin={id:string;title?:string;description?:string;dominant_color?:string;media?:{images?:Record<string,{url:string;width:number;height:number}>}};
 const themes:Record<keyof MoodVector,string[]>={dreamy:['dream','cloud','moon','pastel'],nostalgic:['vintage','memory','retro','old'],calm:['quiet','forest','ocean','book','minimal'],warm:['sunset','coffee','warm','summer'],energetic:['bright','dance','city','color'],cinematic:['night','rain','mountain','sea']};
 function describe(text:string) {
@@ -21,7 +21,7 @@ export class PinterestProvider implements VisualProvider {
  }
  async getBoardsPage(cursor?:string) {
   const r=await this.request<{items?:Board[];bookmark?:string}>('/boards?page_size=100'+(cursor?'&bookmark='+encodeURIComponent(cursor):''));
-  return {items:(r.items||[]).filter(b=>/^\d+$/.test(b.id)&&typeof b.name==='string').map(b=>({id:b.id,name:b.name})),cursor:r.bookmark||undefined};
+  return {items:(r.items||[]).filter(b=>/^\d+$/.test(b.id)&&typeof b.name==='string').map(b=>({id:b.id,name:b.name,count:Number.isFinite(b.pin_count)?b.pin_count:undefined,cover:b.media?.image_cover_url?imageUrl(b.media.image_cover_url)||undefined:undefined})),cursor:r.bookmark||undefined};
  }
  async getBoards(){return (await this.getBoardsPage()).items;}
  async getPins({boards=[],cursor,limit=20}:{boards?:string[];cursor?:string;limit?:number}) {

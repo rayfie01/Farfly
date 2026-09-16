@@ -1,30 +1,25 @@
 'use client';
 import Link from 'next/link';
-import { useSyncExternalStore } from 'react';
+import { useState } from 'react';
+import { ArrowUpRight, Check, Layers, Search, LogOut } from 'lucide-react';
+import { Photo } from '@/components/photo';
 import { useAtmos } from '@/providers/atmos-provider';
-const results:Record<string,string>={connected:'Pinterest connected. Choose the boards you want to explore.',denied:'You cancelled the connection. Your Pinterest account was not imported.',invalid_state:'That connection request expired or could not be verified. Please start again.',failed:'Pinterest could not connect. Check app approval and try again.'};
-const subscribe=()=>()=>{};
-const resultSnapshot=()=>new URLSearchParams(window.location.search).get('result')||'';
 export default function PinterestPage(){
  const {pinterest:p}=useAtmos();
- const result=useSyncExternalStore(subscribe,resultSnapshot,()=> '');
- const message=result==='connected'?(p.checking?'Checking your Pinterest connection...':p.connected?results.connected:'Your Pinterest session has ended. Reconnect to browse your boards.'):(results[result]||'');
- return <div className="profile-layout">
-  <div className="section-heading"><div className="eyebrow">YOUR VISUAL WORLDS</div><h1>Pinterest, at your pace.</h1><p>Explore your selected boards with Far.Fly’s original soundtrack.</p></div>
-  {message&&<output className="demo-notice">{message}</output>}
+ const [query,setQuery]=useState('');
+ const visible=p.boards.filter(b=>b.name.toLowerCase().includes(query.toLowerCase()));
+ return <div className="pinterest-library">
+  <header className="library-heading"><div><div className="eyebrow">YOUR PINTEREST LIBRARY</div><h1>A world you already love.</h1><p>Bring your boards together. Find a feeling. Let the colours follow.</p></div><span className="connection-badge">{p.checking?'Connecting...':p.connected?'● Pinterest connected':'Pinterest'}</span></header>
   {p.error&&<p role="alert" className="demo-notice">{p.error}</p>}
-  <section className="settings-section"><h2>Your connection</h2>
-   {p.checking?<output>Checking connection…</output>:p.connected?<><p>Connected for this browser session, for up to one hour. Your Pinterest password is never shared with Far.Fly.</p><button className="secondary" disabled={p.loading} onClick={()=>void p.disconnect()}>Disconnect Pinterest</button></>:p.configured?<><p>Read your own boards and Pins. Far.Fly will not publish or edit anything on Pinterest. Pinterest may limit which boards are available to the approved app.</p><form action="/api/pinterest/connect" method="post"><button className="primary" type="submit">Connect Pinterest</button></form></>:<p>Pinterest access is awaiting approval and secure setup. The demo collection is available while we wait.</p>}
-   <p><Link href="/privacy.html" prefetch={false}>How your data is handled</Link></p>
-  </section>
-  {p.connected&&<section className="settings-section"><h2>Choose your boards</h2><p>Selected boards load in order. Pins and board choices stay only in this tab’s memory. Select up to 10 boards.</p>
-   <div className="board-grid">{p.boards.map(b=><label key={b.id}><input type="checkbox" checked={p.selectedBoards.includes(b.id)} disabled={!p.selectedBoards.includes(b.id)&&p.selectedBoards.length>=10} onChange={e=>p.selectBoards(e.target.checked?[...p.selectedBoards,b.id]:p.selectedBoards.filter(id=>id!==b.id))}/>{b.name}</label>)}</div>
-   {!p.boards.length&&!p.loading&&<p>No boards loaded. Check your Pinterest access or retry.</p>}
-   <button className="secondary" disabled={p.loading} onClick={()=>void p.loadMoreBoards()}>{p.boardCursor?'Load more boards':'Refresh boards'}</button>
-   {p.loading&&<output>Loading Pinterest…</output>}
-   {p.selectedBoards.length>0&&<p><Link href="/" className="primary">Explore selected boards</Link></p>}
-  </section>}
-  <p><Link href="/profile">Back to profile</Link> · <Link href="/">Explore Far.Fly</Link></p>
+  {p.checking?<output className="library-empty">Opening your library...</output>:!p.connected?<section className="library-empty"><Layers size={40}/><h2>Your boards belong here.</h2><p>Connect Pinterest to browse your public boards and Pins in Far.Fly.</p>{p.configured?<form action="/api/pinterest/connect" method="post"><button className="primary" type="submit">Connect Pinterest <ArrowUpRight size={16}/></button></form>:<p>Pinterest setup is not available yet.</p>}</section>:<>
+   <div className="library-toolbar"><div><h2>Your boards</h2><p>{p.boards.length} boards · {p.selectedBoards.length} selected</p></div><label className="library-search"><Search size={18}/><input aria-label="Search your boards" placeholder="Find a board..." value={query} onChange={e=>setQuery(e.target.value)}/></label></div>
+   <div className="pinterest-board-grid">{visible.map((b,i)=>{const selected=p.selectedBoards.includes(b.id);return <button key={b.id} className={'pinterest-board '+(selected?'is-selected':'')} aria-pressed={selected} aria-label={'Select '+b.name} disabled={!selected&&p.selectedBoards.length>=10} onClick={()=>p.selectBoards(selected?p.selectedBoards.filter(id=>id!==b.id):[...p.selectedBoards,b.id])}><div className="board-cover" style={{background:`hsl(${(i*47+160)%360} 20% 75%)`}}>{b.cover?<Photo src={b.cover} alt={b.name}/>:<Layers size={44}/>}<span className="board-check">{selected&&<Check size={17}/>}</span></div><div className="board-caption"><strong>{b.name}</strong><span>{b.count===undefined?'Pinterest board':b.count+' Pins'}</span></div></button>;})}</div>
+   {!visible.length&&<div className="library-empty"><h2>{query?'No boards match your search.':'No public boards found.'}</h2><p>{query?'Try another name.':'Only boards Pinterest makes available to this account appear here.'}</p></div>}
+   <div className="library-actions"><button className="secondary" disabled={p.loading} onClick={()=>void p.loadMoreBoards()}>{p.boardCursor?'More boards':'Refresh boards'}</button><output>{p.loading?'Loading your Pins...':'Choose up to 10 boards to mix into your feed.'}</output></div>
+   <div className="library-dock"><div><strong>{p.selectedBoards.length?`${p.selectedBoards.length} boards, one atmosphere`:'Choose your next atmosphere'}</strong><span>Explore your own Pinterest collection</span></div>{p.selectedBoards.length>0&&<Link href="/" className="primary">Open my feed <ArrowUpRight size={17}/></Link>}</div>
+   <footer className="library-footer"><p>Your connection renews automatically. Log out here when you are finished.</p><button className="text-button" disabled={p.loading} onClick={()=>void p.disconnect()}><LogOut size={15}/> Log out of Pinterest in Far.Fly</button></footer>
+  </>}
+  <div className="library-links"><Link href="/">Back to feed</Link><Link href="/privacy.html" prefetch={false}>Privacy</Link></div>
  </div>;
 }
 

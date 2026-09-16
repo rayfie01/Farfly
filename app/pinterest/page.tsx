@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import './library.css';
 import { useState } from 'react';
 import { ArrowUpRight, Check, Layers, Search, LogOut } from 'lucide-react';
 import { Photo } from '@/components/photo';

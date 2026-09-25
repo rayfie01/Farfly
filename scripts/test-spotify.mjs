@@ -1,0 +1,57 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+import ts from 'typescript';
+const modules=new Map();
+async function moduleUrl(path){
+ if(modules.has(path))return modules.get(path);
+ let source=ts.transpileModule(fs.readFileSync(new URL(path,import.meta.url),'utf8'),{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+ const dependencies=[...source.matchAll(/from ['"](\.[^'"]+)['"]/g)];
+ for(const match of dependencies){
+  const resolved=new URL(match[1]+'.ts',new URL(path,import.meta.url));
+  const child=await moduleUrl(resolved.href);
+  source=source.replace(match[0],'from '+JSON.stringify(child));
+ }
+ const url='data:text/javascript;base64,'+Buffer.from(source).toString('base64');
+ modules.set(path,url);return url;
+}
+const {handleSpotify}=await import(await moduleUrl('../lib/spotify-server.ts'));
+const {seal,unseal}=await import(await moduleUrl('../lib/spotify-session.ts'));
+const origin='https://farfly.vercel.app', key='a'.repeat(64);
+process.env.SPOTIFY_SESSION_KEY=key;
+const call=(path,opts={})=>handleSpotify(new Request(origin+'/api/spotify/'+path,opts));
+assert.equal((await call('token')).status,405);
+assert.equal((await call('token',{method:'POST',headers:{origin:'https://evil.example'}})).status,403);
+const start=await call('connect',{method:'POST',headers:{origin}});
+const target=new URL(start.headers.get('location'));
+assert.equal(target.searchParams.get('code_challenge_method'),'S256');
+assert.equal(target.searchParams.get('redirect_uri'),origin+'/api/spotify/callback');
+const stateCookie=start.headers.getSetCookie()[0].split(';')[0];
+assert.match(start.headers.getSetCookie()[0],/HttpOnly; Secure; SameSite=Lax/);
+const state=JSON.parse((await unseal(stateCookie.slice('sp_state='.length),'state',key)).value);
+assert.equal(target.searchParams.get('code_challenge'),Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(state.verifier))).toString('base64url'));
+let calls=0;
+globalThis.fetch=async(url,opts)=>{calls++;assert.equal(opts.body.get('code_verifier'),state.verifier);return Response.json({access_token:'access',refresh_token:'refresh',expires_in:3600,scope:'streaming user-read-email user-read-private user-modify-playback-state'});};
+assert.match((await call('callback?code=x&state=wrong',{headers:{cookie:stateCookie}})).headers.get('location'),/invalid_state/);
+assert.equal(calls,0);
+const callback=await call('callback?code=x&state='+state.state,{headers:{cookie:stateCookie}});
+assert.match(callback.headers.get('location'),/connected/);
+const cookies=callback.headers.getSetCookie().map(x=>x.split(';')[0]).join('; ');
+assert.equal((await (await call('token',{method:'POST',headers:{origin,cookie:cookies}})).json()).access_token,'access');
+assert.match(callback.headers.get('cache-control'),/no-store/);
+assert.equal((await call('play',{method:'POST',headers:{origin,cookie:cookies},body:JSON.stringify({device:'x',uri:'https://evil.example'})})).status,400);
+const refreshCookie='sp_refresh='+await seal('refresh','refresh',Date.now()+600000,key);
+globalThis.fetch=async()=>Response.json({error:'temporarily_unavailable'},{status:503});
+const transient=await call('token',{method:'POST',headers:{origin,cookie:refreshCookie}});
+assert.equal(transient.status,503);assert.equal(transient.headers.getSetCookie().length,0);
+globalThis.fetch=async()=>Response.json({access_token:'renewed',refresh_token:'rotated',expires_in:3600});
+const renewed=await call('token',{method:'POST',headers:{origin,cookie:refreshCookie}});
+assert.equal((await renewed.json()).access_token,'renewed');assert.equal(renewed.headers.getSetCookie().length,2);
+globalThis.fetch=async()=>Response.json({error:'invalid_grant'},{status:400});
+const revoked=await call('token',{method:'POST',headers:{origin,cookie:refreshCookie}});
+assert.equal(revoked.status,401);assert.equal(revoked.headers.getSetCookie().length,3);
+const logout=await call('connection',{method:'POST',headers:{origin,cookie:cookies}});
+assert.equal(logout.headers.getSetCookie().length,3);
+const {seal:pinSeal}=await import(await moduleUrl('../lib/pinterest-session.ts'));
+assert.equal(await unseal(await pinSeal('access','x',Date.now()+60000,key),'access',key),null);
+console.log('PASS: Spotify PKCE, state validation, scope validation, origin guard, token cookies, refresh rotation, transient failures, revocation, logout and provider separation.');
+

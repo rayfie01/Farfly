@@ -1,11 +1,14 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useAccount } from './account-provider';
 import type { Pin } from '@/lib/types';
 type Board={id:string;name:string;count?:number;cover?:string};
 type Page={board:string;cursor?:string};
 type Status={configured:boolean;connected:boolean;expiresAt?:number};
 type Result<T>={items:T[];cursor?:string};
 export function usePinterest(){
+ const account=useAccount();
+ const storageKey='farfly:pinterest-boards:'+(account?.id||'guest');
  const [configured,setConfigured]=useState(false),[connected,setConnected]=useState(false),[checking,setChecking]=useState(true);
  const [boards,setBoards]=useState<Board[]>([]),[boardCursor,setBoardCursor]=useState<string|undefined>();
  const [selectedBoards,setSelectedBoards]=useState<string[]>([]),[pins,setPins]=useState<Pin[]>([]);
@@ -15,9 +18,9 @@ export function usePinterest(){
  const pending=useRef<Page[]>([]),generation=useRef(0),busy=useRef(false);
  const purge=useCallback(()=>{
   generation.current++;busy.current=false;pending.current=[];
-  try{sessionStorage.removeItem('farfly:pinterest-boards');}catch{}
+  try{sessionStorage.removeItem(storageKey);}catch{}
   setConnected(false);setBoards([]);setBoardCursor(undefined);setPins([]);setSelectedBoards([]);setHasMore(false);setLoading(false);setVisualSource('demo');setExpiresAt(0);
- },[]);
+ },[storageKey]);
  const request=useCallback(async<T,>(path:string,method='GET'):Promise<T>=>{
   const response=await fetch('/api/pinterest/'+path,{method,credentials:'same-origin',cache:'no-store'});
   const data=await response.json() as {error?:string};
@@ -36,7 +39,7 @@ export function usePinterest(){
      if(active){
       setBoards(page.items);setBoardCursor(page.cursor);
       let chosen:string[]=[];
-      try{const stored=JSON.parse(sessionStorage.getItem('farfly:pinterest-boards')||'[]');if(Array.isArray(stored))chosen=stored.filter((id:unknown)=>typeof id==='string'&&page.items.some(b=>b.id===id)).slice(0,10);}catch{}
+      try{const stored=JSON.parse(sessionStorage.getItem(storageKey)||'[]');if(Array.isArray(stored))chosen=stored.filter((id:unknown)=>typeof id==='string'&&page.items.some(b=>b.id===id)).slice(0,10);}catch{}
       if(chosen.length){
        setSelectedBoards(chosen);setVisualSource('pinterest');setLoading(true);
        pending.current=chosen.map(board=>({board}));
@@ -49,7 +52,7 @@ export function usePinterest(){
    finally{if(active){setChecking(false);setLoading(false);}}
   }
   void init();return()=>{active=false;};
- },[request]);
+ },[request,storageKey]);
  useEffect(()=>{
   if(!connected)return;
   const renew=()=>{void request<Status>('connection').then(status=>{if(!status.connected)purge();else setExpiresAt(status.expiresAt||0);}).catch(()=>{});};
@@ -79,7 +82,7 @@ export function usePinterest(){
   finally{if(version===generation.current){busy.current=false;setLoading(false);}}
  }
  function selectBoards(ids:string[]){
-  try{sessionStorage.setItem('farfly:pinterest-boards',JSON.stringify(ids));}catch{}
+  try{sessionStorage.setItem(storageKey,JSON.stringify(ids));}catch{}
   generation.current++;busy.current=false;pending.current=ids.map(board=>({board}));
   setSelectedBoards(ids);setPins([]);setError('');setHasMore(ids.length>0);setVisualSource('pinterest');
   if(ids.length)void loadPage();else setLoading(false);

@@ -1,4 +1,5 @@
 'use client';
+import { useAccount } from './account-provider';
 import { createContext, useContext, useState, useRef, useEffect, useCallback, type ReactNode } from 'react';
 import { tracks, boards } from '@/mock/catalog';
 import { aggregate, moodName, moodTags, rankTracks } from '@/lib/mood';
@@ -8,6 +9,8 @@ import { useVisualTheme } from './use-visual-theme';
 import { usePinterest } from './use-pinterest';
 
 function useAtmosState() {
+ const account=useAccount();
+ const storageKey='atmos:v1:'+(account?.id||'guest');
   const pinterest=usePinterest();
   const activeBoards=[...enabledPinterestBoards(pinterest.connected,pinterest.selectedBoards)];
   const audio = useRef<HTMLAudioElement>(null);
@@ -52,13 +55,13 @@ function useAtmosState() {
   useEffect(()=>{
     // Client storage hydration is an intentional external-system synchronization.
     // oxlint-disable-next-line react/react-compiler
-    try { const data=JSON.parse(localStorage.getItem('atmos:v1') || 'null'); if(data) {
+    try { const data=JSON.parse(localStorage.getItem(storageKey) || 'null'); if(data) {
       // oxlint-disable-next-line react/react-compiler
       setSavedPins(data.savedPins || []);setLikedPins(data.likedPins || []);setLikedTracks(data.likedTracks || []);setSessions(data.sessions || []);setSavedTracks(data.savedTracks || []);setAdaptive(data.adaptive ?? true);setEnabledBoards(data.enabledBoards || boards);
     }} catch { toast.error('Your saved collection could not be loaded.'); }
     setReady(true);
-  },[]);
-  useEffect(()=>{if(ready) {try {localStorage.setItem('atmos:v1',JSON.stringify({savedPins:savedPins.filter(id=>!id.startsWith('pinterest-')),likedPins:likedPins.filter(id=>!id.startsWith('pinterest-')),likedTracks,savedTracks,sessions,adaptive,enabledBoards}));}catch{toast.error('Storage is full. New saves may not persist.');}}},[ready,savedPins,likedPins,likedTracks,savedTracks,sessions,adaptive,enabledBoards]);
+  },[storageKey]);
+  useEffect(()=>{if(ready) {try {localStorage.setItem(storageKey,JSON.stringify({savedPins:savedPins.filter(id=>!id.startsWith('pinterest-')),likedPins:likedPins.filter(id=>!id.startsWith('pinterest-')),likedTracks,savedTracks,sessions,adaptive,enabledBoards}));}catch{toast.error('Storage is full. New saves may not persist.');}}},[storageKey,ready,savedPins,likedPins,likedTracks,savedTracks,sessions,adaptive,enabledBoards]);
   useEffect(()=>{
     if(!adaptive || signals.length<3) return;
     const timer=setTimeout(()=>{

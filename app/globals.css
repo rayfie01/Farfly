@@ -45,3 +45,5 @@
 :root[data-visual-theme] :is(body,header,nav,button,a,input,select,section,footer,article,[data-slot=dialog-content],.mini-player,.atmospheric-background,.artwork-glow){transition:background-color 1s ease,color 1s ease,border-color 1s ease}
 @media(prefers-reduced-motion:reduce){:root[data-visual-theme] *{transition:none!important}}
 
+.album-art.spotify-art:after{display:none}.album-art.spotify-art img{object-fit:contain}
+

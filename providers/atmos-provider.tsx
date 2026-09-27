@@ -4,7 +4,7 @@ import { useAccount } from './account-provider';
 import { createContext, useContext, useState, useRef, useEffect, useCallback, type ReactNode } from 'react';
 import { tracks, boards } from '@/mock/catalog';
 import { moodName, moodTags, rankTracks } from '@/lib/mood';
-import { neutral, type Track, type Signal, type Session, type Pin } from '@/lib/types';
+import { neutral, type Track, type Signal, type Session, type Pin, type Mood } from '@/lib/types';
 import { toast } from 'sonner';
 import { useVisualTheme } from './use-visual-theme';
 import { usePinterest } from './use-pinterest';
@@ -74,6 +74,11 @@ function useAtmosState() {
     setMood(nextMood);setPictureBusy(false);
     setQueue([trackRef.current,...rankTracks([...catalog],nextMood,likedTracks,skipped).filter(t=>t.id!==trackRef.current.id)]);
   };
+  const correctPictureMood=(choice:Mood)=>{
+    pictureVersion.current++;setPictureBusy(false);
+    const corrected={dreamy:.1,nostalgic:.1,calm:.1,warm:.1,energetic:.1,cinematic:.1,[choice]:1};
+    setMood(corrected);
+  };
   const discoveryMood=moodTags(mood)[0];
   useEffect(()=>{
     const controller=new AbortController();
@@ -141,7 +146,7 @@ function useAtmosState() {
   // Music-only player; attribution and track metadata are provided in the player.
   // oxlint-disable-next-line jsx-a11y/media-has-caption
   const engine=<audio ref={audio} src={current.source} preload="metadata" onPlay={()=>setPlaying(true)} onPause={()=>setPlaying(false)} onPlaying={()=>setBuffering(false)} onWaiting={()=>setBuffering(true)} onCanPlay={()=>setBuffering(false)} onTimeUpdate={()=>setTime(audio.current?.currentTime || 0)} onDurationChange={()=>{const d=audio.current?.duration;if(d && Number.isFinite(d))setDuration(d);}} onEnded={()=>{intent.current=true;next();}} onError={()=>{failures.current.add(current.id);setBuffering(false);toast.error('This track is unavailable. Trying the next one.');next();}} />;
-  return {...visualTheme,focusedPicture,focusPicture,pictureBusy,catalog,savedTracks,musicStatus,pinterest,engine,current,queue,history,playing,time,duration,volume,buffering,error,immersive,setImmersive,play,pause,toggle:()=>playing?pause():void play(),next,previous,seek,setVolume,playTrack,mood,name,signal,signals,adaptive,setAdaptive,enabledBoards,setEnabledBoards,savedPins,likedPins,likedTracks,sessions,savePin,likePin,likeTrack,saveSession,openSession,clearHistory,removeSession:(id:string)=>setSessions(s=>s.filter(x=>x.id!==id))};
+  return {...visualTheme,focusedPicture,focusPicture,correctPictureMood,pictureBusy,catalog,savedTracks,musicStatus,pinterest,engine,current,queue,history,playing,time,duration,volume,buffering,error,immersive,setImmersive,play,pause,toggle:()=>playing?pause():void play(),next,previous,seek,setVolume,playTrack,mood,name,signal,signals,adaptive,setAdaptive,enabledBoards,setEnabledBoards,savedPins,likedPins,likedTracks,sessions,savePin,likePin,likeTrack,saveSession,openSession,clearHistory,removeSession:(id:string)=>setSessions(s=>s.filter(x=>x.id!==id))};
 }
 function enabledPinterestBoards(connected:boolean,ids:string[]){return connected?ids.map(id=>'pinterest-'+id):[];}
 const AtmosContext=createContext<ReturnType<typeof useAtmosState>|null>(null);

@@ -18,3 +18,10 @@ Validation:
 - Embedded browser reported playback_error on initial starts; explicit Play worked and advanced the SDK clock. User previously confirmed regular Chrome playback. Do not claim audible output or full natural-end verification from this test.
 - Spotify policy approval for the complete visual-recommendation use case has not been established. No automatic song change is tied to picture clicks.
 
+
+## September 27 follow-up
+- Pinterest sign-in uses a JSON response plus explicit browser navigation, retaining server-side OAuth state and account binding. Errors are visible. Personal home-feed retrieval is not implemented: current access supports boards and Pins.
+- Mood estimation remains local colour/caption heuristics, not vision AI. Existing mood tags have reduced weight; coffee/cafe scenes favour warm and calm, and monochrome colours no longer imply warmth. Users can correct the estimate in picture details.
+- Spotify discovery rotates six styles per mood and paginates search results, two requests per batch, up to 30 batches. Discover more appends unique tracks without changing playback. Results are search-based estimates, not Spotify audio-feature matching or access to its entire catalog.
+- Validation: full tests, lint and Next.js production build pass. Live deployment verification recorded separately.
+

@@ -1,5 +1,5 @@
 import { encode, seal, unseal } from './spotify-session';
-import { isMood, searches, normalizeSpotify } from './spotify-discovery';
+import { isMood, discoveryPage, normalizeSpotify } from './spotify-discovery';
 const origin='https://farfly.vercel.app';
 const client='639e9cc9dadb4a5f81f7962b599c40af';
 const redirect=origin+'/api/spotify/callback';
@@ -73,15 +73,18 @@ export async function handleSpotify(req:Request):Promise<Response>{
   const body=await req.json().catch(()=>null) as Record<string,unknown>|null;
   if(action==='recommendations'){
    if(!isMood(body?.mood))return finish(json({error:'Choose a picture mood first.'},400));
+   const page=body.page??0;
+   if(typeof page!=='number'||!Number.isInteger(page)||page<0||page>29)return finish(json({error:'Invalid discovery page.'},400));
+   const selection=discoveryPage(body.mood,page);
    const items:unknown[][]=[];
-   for(const q of searches[body.mood]){
-    const r=await fetch('https://api.spotify.com/v1/search?'+new URLSearchParams({q,type:'track',limit:'10'}),{headers:{Authorization:'Bearer '+access.value},cache:'no-store',signal:AbortSignal.timeout(10000)});
+   for(const q of selection.queries){
+    const r=await fetch('https://api.spotify.com/v1/search?'+new URLSearchParams({q,type:'track',limit:'10',offset:String(selection.offset)}),{headers:{Authorization:'Bearer '+access.value},cache:'no-store',signal:AbortSignal.timeout(10000)});
     if(r.status===401)return clear(json({error:'Please reconnect Spotify.'},401));
     if(!r.ok)return finish(json({error:r.status===403?'Spotify search is unavailable for this app or account.':r.status===429?'Spotify is busy. Please wait before trying another picture.':'Could not find songs. Your current music is unchanged.'},r.status===429?429:502));
     const data=await r.json() as {tracks?:{items?:unknown[]}};items.push(data.tracks?.items||[]);
    }
    const interleaved=Array.from({length:10},(_,i)=>items.flatMap(list=>list[i]?[list[i]]:[])).flat();
-   return finish(json({tracks:normalizeSpotify(interleaved),mood:body.mood}));
+   return finish(json({tracks:normalizeSpotify(interleaved),mood:body.mood,hasMore:page<29}));
   }
   if(!body||typeof body.device!=='string'||!/^[a-zA-Z0-9_-]{1,128}$/.test(body.device)||typeof body.uri!=='string'||!/^spotify:track:[a-zA-Z0-9]{22}$/.test(body.uri))return finish(json({error:'Enter a valid Spotify track link.'},400));
   const r=await fetch('https://api.spotify.com/v1/me/player/play?device_id='+encodeURIComponent(body.device),{method:'PUT',headers:{Authorization:'Bearer '+access.value,'Content-Type':'application/json'},body:JSON.stringify({uris:[body.uri]}),cache:'no-store',signal:AbortSignal.timeout(10000)});

@@ -80,3 +80,16 @@ console.log('PASS: picture mood, current-track preservation, fresh queue order, 
 const jsonConnect=await call('connect',{method:'POST',headers:{origin,'Content-Type':'application/json'},body:'{}'});
 assert.equal(jsonConnect.status,200);assert.equal(new URL((await jsonConnect.json()).url).origin,'https://accounts.spotify.com');assert.ok(jsonConnect.headers.getSetCookie().some(c=>c.startsWith('sp_state=')));
 
+const {discoveryPage}=await import(await moduleUrl('../lib/spotify-discovery.ts'));
+assert.notDeepEqual(discoveryPage('warm',0).queries,discoveryPage('warm',1).queries);
+assert.equal(discoveryPage('warm',3).offset,10);
+assert.equal(dominantMood(pictureMood({...base,title:'Coffee table with books',mood:{...base.mood,cinematic:1}},{hue:0,saturation:0,dark:true})),'warm');
+assert.equal(dominantMood(pictureMood({...base,title:'Cosy cafe latte'},{hue:240,saturation:20,dark:true})),'warm');
+const searchUrls=[];
+globalThis.fetch=async url=>{searchUrls.push(new URL(url));return Response.json({tracks:{items:[]}});};
+const later=await call('recommendations',{method:'POST',headers:{origin,cookie:cookies},body:JSON.stringify({mood:'warm',page:3})});
+assert.equal(later.status,200);assert.equal((await later.json()).hasMore,true);
+assert.ok(searchUrls.every(u=>u.searchParams.get('offset')==='10'));
+assert.equal((await call('recommendations',{method:'POST',headers:{origin,cookie:cookies},body:JSON.stringify({mood:'warm',page:30})})).status,400);
+console.log('PASS: coffee scenes outweigh old tags, broader styles, paginated search and bounded discovery.');
+

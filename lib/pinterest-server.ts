@@ -45,7 +45,7 @@ export async function handlePinterest(request:Request):Promise<Response> {
     const state=encode(crypto.getRandomValues(new Uint8Array(32)));
     const location=new URL('https://www.pinterest.com/oauth/');
     location.search=new URLSearchParams({client_id:config.id,redirect_uri:config.redirect,response_type:'code',scope:'boards:read,pins:read',state}).toString();
-    const response=new Response(null,{status:303,headers:{...headers,Location:location.href}});
+    const response=request.headers.get('content-type')?.includes('application/json')?json({url:location.href}):new Response(null,{status:303,headers:{...headers,Location:location.href}});
     clear(response,config.secure);
     setCookie(response,stateName,await seal('state',state,Date.now()+600000,config.key),config.secure,600);
     return response;

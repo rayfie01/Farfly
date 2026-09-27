@@ -87,11 +87,21 @@ export function usePinterest(){
   setSelectedBoards(ids);setPins([]);setError('');setHasMore(ids.length>0);setVisualSource('pinterest');
   if(ids.length)void loadPage();else setLoading(false);
  }
+ async function connect(){
+  setLoading(true);setError('');
+  try{
+   const response=await fetch('/api/pinterest/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}',credentials:'same-origin',cache:'no-store'});
+   const data=await response.json() as {url?:string;error?:string};
+   if(!response.ok)throw Error(data.error||'Pinterest sign-in could not start.');
+   if(!data.url||new URL(data.url).origin!=='https://www.pinterest.com')throw Error('Pinterest returned an invalid sign-in link.');
+   window.location.assign(data.url);
+  }catch(e){setError(e instanceof Error?e.message:'Could not connect Pinterest.');setLoading(false);}
+ }
  async function disconnect(){
   setLoading(true);setError('');
   try{await request('connection','POST');purge();}
   catch(e){setError(e instanceof Error?e.message:'Could not disconnect. Try again.');setLoading(false);}
  }
- return {configured,connected,checking,boards,boardCursor,selectedBoards,pins,error,loading,hasMore,visualSource,setVisualSource,selectBoards,loadPage,loadMoreBoards,disconnect};
+ return {configured,connected,checking,boards,boardCursor,selectedBoards,pins,error,loading,hasMore,visualSource,setVisualSource,selectBoards,loadPage,loadMoreBoards,connect,disconnect};
 }
 

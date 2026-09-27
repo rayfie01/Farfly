@@ -16,6 +16,9 @@ function useSpotifyState(){
  const [selected,setSelected]=useState(true);const pauseRef=useRef(pause);useEffect(()=>{pauseRef.current=pause;},[pause]);
  const player=useRef<Player|null>(null);
  const [recommendations,setRecommendations]=useState<Track[]>([]),[recommendationBusy,setRecommendationBusy]=useState(false),[recommendationError,setRecommendationError]=useState('');
+ const [discovery,setDiscovery]=useState({key:'',page:0});
+ const [recommendationHasMore,setRecommendationHasMore]=useState(true);
+ const recommendationOwner=useRef('');
  const advance=useRef<()=>void>(()=>{});
  const prior=useRef<{paused:boolean;position:number;duration:number;id:string}|null>(null);
  const requested=useRef<string>('');
@@ -48,15 +51,18 @@ function useSpotifyState(){
  }
  const pictureId=focusedPicture?.id;
  const selectedMood=dominantMood(mood);
+ const discoveryKey=(pictureId||'')+':'+selectedMood;
+ const discoveryIndex=discovery.key===discoveryKey?discovery.page:0;
+ const moreSongs=()=>{if(!recommendationBusy&&!pictureBusy)setDiscovery({key:discoveryKey,page:Math.min(29,discoveryIndex+1)});};
  useEffect(()=>{
   if(!connected||!pictureId||pictureBusy)return;
   const controller=new AbortController();let active=true;
   const timer=setTimeout(()=>{
    setRecommendationBusy(true);setRecommendationError('');
-   void fetch('/api/spotify/recommendations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mood:selectedMood}),signal:controller.signal,cache:'no-store'}).then(async r=>{const d=await r.json() as {tracks?:Track[];error?:string};if(!r.ok)throw Error(d.error||'Could not load recommendations.');if(!active)return;if(!d.tracks?.length){setRecommendationError('No matching songs found. Keeping your previous suggestions.');return;}setRecommendations(d.tracks);}).catch(e=>{if(active)setRecommendationError(e instanceof Error?e.message:'Could not load songs.');}).finally(()=>{if(active)setRecommendationBusy(false);});
+   void fetch('/api/spotify/recommendations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mood:selectedMood,page:discoveryIndex}),signal:controller.signal,cache:'no-store'}).then(async r=>{const d=await r.json() as {tracks?:Track[];error?:string;hasMore?:boolean};if(!r.ok)throw Error(d.error||'Could not load recommendations.');if(!active)return;setRecommendationHasMore(!!d.hasMore);if(!d.tracks?.length){setRecommendationError('No new songs in this batch. Try discovering more.');return;}const append=discoveryIndex>0&&recommendationOwner.current===discoveryKey;recommendationOwner.current=discoveryKey;setRecommendations(old=>Array.from(new Map([...(append?old:[]),...d.tracks!].map(t=>[t.id,t])).values()));}).catch(e=>{if(active)setRecommendationError(e instanceof Error?e.message:'Could not load songs.');}).finally(()=>{if(active)setRecommendationBusy(false);});
   },300);
   return()=>{active=false;clearTimeout(timer);controller.abort();};
- },[connected,pictureId,pictureBusy,selectedMood]);
+ },[connected,pictureId,pictureBusy,selectedMood,discoveryKey,discoveryIndex]);
  async function connect(){setBusy(true);setError('');try{const result=await api('connect');if(!result.url||new URL(result.url).origin!=='https://accounts.spotify.com')throw Error('Spotify sign-in could not start. Please retry.');window.location.assign(result.url);}catch(e){setError(e instanceof Error?e.message:'Could not connect Spotify.');setBusy(false);}}
  async function disconnect(){setBusy(true);try{await player.current?.pause?.();}catch{}try{await api('connection');player.current?.disconnect();setConnected(false);setDevice('');setState(null);setRecommendations([]);setRecommendationError('');prior.current=null;}catch(e){setError(e instanceof Error?e.message:'Could not disconnect.');}finally{setBusy(false);}}
 
@@ -68,7 +74,7 @@ function useSpotifyState(){
  const next=()=>{const candidate=nextRecommendation(current?.id,recommendations);if(candidate)void play(candidate.id);else void command(()=>player.current!.nextTrack());};
  useEffect(()=>{advance.current=()=>{const candidate=nextRecommendation(requested.current||current?.id,recommendations);if(candidate)void play(candidate.id);};});
  const toggle=()=>void command(async()=>{pauseRef.current();await player.current!.activateElement();await player.current!.togglePlay();});
- return {selected,queue,recommendations,recommendationBusy,recommendationError,connected,loaded,device,state,error,input,setInput,busy,volume,current,play,connect,disconnect,toggle,
+ return {selected,queue,recommendations,recommendationBusy,recommendationError,recommendationHasMore,moreSongs,connected,loaded,device,state,error,input,setInput,busy,volume,current,play,connect,disconnect,toggle,
  next,previous:()=>void command(()=>player.current!.previousTrack()),
  seek:(seconds:number)=>void command(()=>player.current!.seek(seconds*1000)),
  setVolume:(v:number)=>{setVolume(v);void command(()=>player.current!.setVolume(v));},

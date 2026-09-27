@@ -5,20 +5,21 @@ const words:Record<Mood,RegExp>={
  dreamy:/\b(dream|cloud|moon|pastel|stars|mist|flowers|pink)\b/i,
  nostalgic:/\b(vintage|memory|retro|old|film|autumn)\b/i,
  calm:/\b(quiet|forest|ocean|book|peace|minimal|lake|rain)\b/i,
- warm:/\b(sunset|coffee|warm|summer|beach|sunlight|golden)\b/i,
+ warm:/\b(sunset|coffee|cafe|café|latte|espresso|cozy|cosy|warm|summer|beach|sunlight|golden)\b/i,
  energetic:/\b(bright|dance|neon|party|sport|festival)\b/i,
  cinematic:/\b(night|mountain|storm|city|dramatic|dark)\b/i,
 };
 export function pictureMood(pin:Pin,palette:Palette|null):MoodVector {
- const scores={...pin.mood};
+ const scores=Object.fromEntries(Object.entries(pin.mood).map(([key,value])=>[key,.1+Math.max(0,Math.min(1,value))*.1])) as MoodVector;
  const text=pin.title+' '+pin.tags.join(' ');
  for(const mood of Object.keys(words) as Mood[])if(words[mood].test(text))scores[mood]+=0.65;
+ if(/\b(coffee|cafe|café|latte|espresso|cozy|cosy)\b/i.test(text)){scores.warm+=.4;scores.calm+=.5;}
  if(palette){
   if(palette.dark){scores.cinematic+=.35;scores.nostalgic+=.15;}
   else if(palette.saturation<25){scores.calm+=.3;scores.dreamy+=.15;}
-  if(palette.hue<65||palette.hue>340)scores.warm+=.3;
-  else if(palette.hue<220)scores.calm+=.3;
-  else scores.dreamy+=.3;
+  if(palette.saturation>12&&(palette.hue<65||palette.hue>340))scores.warm+=.3;
+  else if(palette.saturation>12&&palette.hue<220)scores.calm+=.3;
+  else if(palette.saturation>12)scores.dreamy+=.3;
   if(palette.saturation>45&&!palette.dark)scores.energetic+=.2;
  }
  const max=Math.max(...Object.values(scores));

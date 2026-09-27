@@ -95,3 +95,9 @@ assert.equal(revoked.status,401);assert(revoked.headers.getSetCookie().some(c=>c
 assert(disconnected.headers.getSetCookie().some(c=>c.startsWith('farfly_pin_refresh=;')));
 console.log('PASS: persistent refresh, rotation, transient retry, invalid refresh and logout cleanup.');
 
+const jsonStart=await call('connect',{method:'POST',headers:{origin,'Content-Type':'application/json'},body:'{}'});
+assert.equal(jsonStart.status,200);
+assert.equal(new URL((await jsonStart.json()).url).origin,'https://www.pinterest.com');
+assert.ok(jsonStart.headers.getSetCookie().some(c=>c.startsWith('farfly_pin_state=')&&c.includes('HttpOnly')));
+console.log('PASS: explicit Pinterest sign-in redirect retains protected OAuth state.');
+

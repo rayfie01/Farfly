@@ -93,3 +93,16 @@ assert.ok(searchUrls.every(u=>u.searchParams.get('offset')==='10'));
 assert.equal((await call('recommendations',{method:'POST',headers:{origin,cookie:cookies},body:JSON.stringify({mood:'warm',page:30})})).status,400);
 console.log('PASS: coffee scenes outweigh old tags, broader styles, paginated search and bounded discovery.');
 
+const {pictureVariation,recommendationsForPicture}=await import(await moduleUrl('../lib/spotify-discovery.ts'));
+const firstPin=pictureVariation('pinterest-1126251819319171606'),secondPin=pictureVariation('pinterest-1126251819293128864');
+assert.notDeepEqual(discoveryPage('calm',0,firstPin),discoveryPage('calm',0,secondPin));
+assert.deepEqual(recommendationsForPicture('old','new',false,fresh),[]);
+assert.deepEqual(recommendationsForPicture('new','new',true,fresh),[]);
+assert.deepEqual(recommendationQueue(old,recommendationsForPicture('old','new',false,fresh)),[old]);
+assert.deepEqual(recommendationsForPicture('new','new',false,fresh),fresh);
+assert.equal((await call('recommendations',{method:'POST',headers:{origin,cookie:cookies},body:JSON.stringify({mood:'calm',variation:30})})).status,400);
+searchUrls.length=0;
+await call('recommendations',{method:'POST',headers:{origin,cookie:cookies},body:JSON.stringify({mood:'calm',variation:3})});
+assert.ok(searchUrls.every(u=>u.searchParams.get('offset')==='10'));
+console.log('PASS: different Pinterest pictures vary search, stale cards are hidden, current song retained, variation validated.');
+

@@ -3,7 +3,7 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import Script from 'next/script';
 import { useAtmos } from './atmos-provider';
 import { dominantMood } from '@/lib/picture-mood';
-import { recommendationQueue, nextRecommendation, trackFinished } from '@/lib/spotify-discovery';
+import { recommendationQueue, nextRecommendation, trackFinished, pictureVariation, recommendationsForPicture } from '@/lib/spotify-discovery';
 import { neutral, type Track } from '@/lib/types';
 type SpotifyTrack={name:string;uri:string;artists:{name:string}[];album:{images:{url:string}[]}};
 type Playback={paused:boolean;position:number;duration:number;track_window:{current_track:SpotifyTrack;previous_tracks?:SpotifyTrack[];next_tracks?:SpotifyTrack[]}};
@@ -15,10 +15,12 @@ function useSpotifyState(){
  const {pause,playing:demoPlaying,focusedPicture,pictureBusy,mood}=useAtmos();
  const [selected,setSelected]=useState(true);const pauseRef=useRef(pause);useEffect(()=>{pauseRef.current=pause;},[pause]);
  const player=useRef<Player|null>(null);
- const [recommendations,setRecommendations]=useState<Track[]>([]),[recommendationBusy,setRecommendationBusy]=useState(false),[recommendationError,setRecommendationError]=useState('');
+ const [recommendationResult,setRecommendationResult]=useState<{owner:string;tracks:Track[]}>({owner:'',tracks:[]});
+ const {owner:recommendationOwner,tracks:recommendations}=recommendationResult;
+ const [recommendationBusy,setRecommendationBusy]=useState(false),[recommendationError,setRecommendationError]=useState('');
  const [discovery,setDiscovery]=useState({key:'',page:0});
  const [recommendationHasMore,setRecommendationHasMore]=useState(true);
- const recommendationOwner=useRef('');
+ const [retryVersion,setRetryVersion]=useState(0);
  const advance=useRef<()=>void>(()=>{});
  const prior=useRef<{paused:boolean;position:number;duration:number;id:string}|null>(null);
  const requested=useRef<string>('');
@@ -53,28 +55,31 @@ function useSpotifyState(){
  const selectedMood=dominantMood(mood);
  const discoveryKey=(pictureId||'')+':'+selectedMood;
  const discoveryIndex=discovery.key===discoveryKey?discovery.page:0;
+ const visibleRecommendations=recommendationsForPicture(recommendationOwner,discoveryKey,pictureBusy,recommendations);
+ const retryRecommendations=()=>setRetryVersion(v=>v+1);
  const moreSongs=()=>{if(!recommendationBusy&&!pictureBusy)setDiscovery({key:discoveryKey,page:Math.min(29,discoveryIndex+1)});};
  useEffect(()=>{
   if(!connected||!pictureId||pictureBusy)return;
   const controller=new AbortController();let active=true;
   const timer=setTimeout(()=>{
    setRecommendationBusy(true);setRecommendationError('');
-   void fetch('/api/spotify/recommendations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mood:selectedMood,page:discoveryIndex}),signal:controller.signal,cache:'no-store'}).then(async r=>{const d=await r.json() as {tracks?:Track[];error?:string;hasMore?:boolean};if(!r.ok)throw Error(d.error||'Could not load recommendations.');if(!active)return;setRecommendationHasMore(!!d.hasMore);if(!d.tracks?.length){setRecommendationError('No new songs in this batch. Try discovering more.');return;}const append=discoveryIndex>0&&recommendationOwner.current===discoveryKey;recommendationOwner.current=discoveryKey;setRecommendations(old=>Array.from(new Map([...(append?old:[]),...d.tracks!].map(t=>[t.id,t])).values()));}).catch(e=>{if(active)setRecommendationError(e instanceof Error?e.message:'Could not load songs.');}).finally(()=>{if(active)setRecommendationBusy(false);});
+   setRecommendationResult(old=>discoveryIndex===0||old.owner!==discoveryKey?{owner:discoveryKey,tracks:[]}:old);
+   void fetch('/api/spotify/recommendations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mood:selectedMood,page:discoveryIndex,variation:pictureVariation(pictureId)}),signal:controller.signal,cache:'no-store'}).then(async r=>{const d=await r.json() as {tracks?:Track[];error?:string;hasMore?:boolean};if(!r.ok)throw Error(d.error||'Could not load recommendations.');if(!active)return;setRecommendationHasMore(!!d.hasMore);if(!d.tracks?.length){setRecommendationError('No new songs in this batch. Try discovering more.');return;}setRecommendationResult(old=>({owner:discoveryKey,tracks:Array.from(new Map([...(discoveryIndex>0&&old.owner===discoveryKey?old.tracks:[]),...d.tracks!].map(t=>[t.id,t])).values())}));}).catch(e=>{if(active)setRecommendationError(e instanceof Error?e.message:'Could not load songs.');}).finally(()=>{if(active)setRecommendationBusy(false);});
   },300);
   return()=>{active=false;clearTimeout(timer);controller.abort();};
- },[connected,pictureId,pictureBusy,selectedMood,discoveryKey,discoveryIndex]);
+ },[connected,pictureId,pictureBusy,selectedMood,discoveryKey,discoveryIndex,retryVersion]);
  async function connect(){setBusy(true);setError('');try{const result=await api('connect');if(!result.url||new URL(result.url).origin!=='https://accounts.spotify.com')throw Error('Spotify sign-in could not start. Please retry.');window.location.assign(result.url);}catch(e){setError(e instanceof Error?e.message:'Could not connect Spotify.');setBusy(false);}}
- async function disconnect(){setBusy(true);try{await player.current?.pause?.();}catch{}try{await api('connection');player.current?.disconnect();setConnected(false);setDevice('');setState(null);setRecommendations([]);setRecommendationError('');prior.current=null;}catch(e){setError(e instanceof Error?e.message:'Could not disconnect.');}finally{setBusy(false);}}
+ async function disconnect(){setBusy(true);try{await player.current?.pause?.();}catch{}try{await api('connection');player.current?.disconnect();setConnected(false);setDevice('');setState(null);setRecommendationResult({owner:'',tracks:[]});setRecommendationError('');prior.current=null;}catch(e){setError(e instanceof Error?e.message:'Could not disconnect.');}finally{setBusy(false);}}
 
  const track=state?.track_window.current_track;
  const toTrack=(track:SpotifyTrack):Track=>({id:track.uri,title:track.name,artist:track.artists.map(a=>a.name).join(', '),artwork:track.album.images[0]?.url||'/farfly-orca.png',colors:['#50685e','#15251f'],duration:(state?.duration||0)/1000,source:'',tags:[],mood:neutral,provider:'spotify',permalink:'https://open.spotify.com/track/'+track.uri.split(':').pop()});
  const current=track?toTrack(track):null;
  const tracks=state?[...(state.track_window.previous_tracks||[]),state.track_window.current_track,...(state.track_window.next_tracks||[])]:[];
- const queue=recommendations.length?recommendationQueue(current,recommendations):Array.from(new Map(tracks.map(t=>[t.uri,toTrack(t)])).values());
- const next=()=>{const candidate=nextRecommendation(current?.id,recommendations);if(candidate)void play(candidate.id);else void command(()=>player.current!.nextTrack());};
- useEffect(()=>{advance.current=()=>{const candidate=nextRecommendation(requested.current||current?.id,recommendations);if(candidate)void play(candidate.id);};});
+ const queue=focusedPicture?recommendationQueue(current,visibleRecommendations):Array.from(new Map(tracks.map(t=>[t.uri,toTrack(t)])).values());
+ const next=()=>{const candidate=nextRecommendation(current?.id,visibleRecommendations);if(candidate)void play(candidate.id);else void command(()=>player.current!.nextTrack());};
+ useEffect(()=>{advance.current=()=>{const candidate=nextRecommendation(requested.current||current?.id,visibleRecommendations);if(candidate)void play(candidate.id);};});
  const toggle=()=>void command(async()=>{pauseRef.current();await player.current!.activateElement();await player.current!.togglePlay();});
- return {selected,queue,recommendations,recommendationBusy,recommendationError,recommendationHasMore,moreSongs,connected,loaded,device,state,error,input,setInput,busy,volume,current,play,connect,disconnect,toggle,
+ return {selected,queue,recommendations:visibleRecommendations,retryRecommendations,recommendationBusy:recommendationBusy||pictureBusy||(!!pictureId&&connected&&recommendationOwner!==discoveryKey),recommendationError,recommendationHasMore,moreSongs,connected,loaded,device,state,error,input,setInput,busy,volume,current,play,connect,disconnect,toggle,
  next,previous:()=>void command(()=>player.current!.previousTrack()),
  seek:(seconds:number)=>void command(()=>player.current!.seek(seconds*1000)),
  setVolume:(v:number)=>{setVolume(v);void command(()=>player.current!.setVolume(v));},
@@ -83,5 +88,5 @@ function useSpotifyState(){
 const SpotifyContext=createContext<ReturnType<typeof useSpotifyState>|null>(null);
 export function SpotifyProvider({children}:{children:React.ReactNode}){const value=useSpotifyState();return <SpotifyContext.Provider value={value}>{value.script}{children}</SpotifyContext.Provider>;}
 export function useSpotify(){const value=useContext(SpotifyContext);if(!value)throw Error('SpotifyProvider missing');return value;}
-export function useMusicPlayer(){const a=useAtmos(),s=useSpotify();if(!s.current||!s.selected)return {...a,queue:s.connected&&s.recommendations.length?recommendationQueue(a.current,s.recommendations):a.queue,playTrack:(track:Track,autoplay=true)=>track.provider==='spotify'?void s.play(track.id):a.playTrack(track,autoplay)};return {...a,current:s.current,queue:s.queue,playing:!!s.state&&!s.state.paused,time:(s.state?.position||0)/1000,duration:(s.state?.duration||0)/1000,volume:s.volume,buffering:s.busy,error:s.error,musicStatus:'Spotify',toggle:s.toggle,next:s.next,previous:s.previous,seek:s.seek,setVolume:s.setVolume,playTrack:(track:Track)=>void s.play(track.id)};}
+export function useMusicPlayer(){const a=useAtmos(),s=useSpotify();if(!s.current||!s.selected)return {...a,queue:s.connected&&a.focusedPicture?recommendationQueue(a.current,s.recommendations):a.queue,playTrack:(track:Track,autoplay=true)=>track.provider==='spotify'?void s.play(track.id):a.playTrack(track,autoplay)};return {...a,current:s.current,queue:s.queue,playing:!!s.state&&!s.state.paused,time:(s.state?.position||0)/1000,duration:(s.state?.duration||0)/1000,volume:s.volume,buffering:s.busy,error:s.error,musicStatus:'Spotify',toggle:s.toggle,next:s.next,previous:s.previous,seek:s.seek,setVolume:s.setVolume,playTrack:(track:Track)=>void s.play(track.id)};}
 

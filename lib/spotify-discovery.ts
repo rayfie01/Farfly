@@ -7,7 +7,12 @@ export const searches:Record<Mood,string[]>={
  energetic:['genre:dance','genre:funk','genre:house','genre:disco','genre:rock','genre:electronic'],
  cinematic:['genre:classical','genre:ambient','genre:post-rock','genre:soundtrack','genre:piano','genre:orchestral'],
 };
-export function discoveryPage(mood:Mood,page:number){
+export function pictureVariation(id:string){
+ let hash=0;for(const char of id)hash=(Math.imul(hash,31)+char.charCodeAt(0))>>>0;
+ return hash%30;
+}
+export function discoveryPage(mood:Mood,page:number,variation=0){
+ page=(page+variation)%30;
  const styles=searches[mood],rounds=styles.length/2;
  return {queries:styles.slice((page%rounds)*2,(page%rounds)*2+2),offset:Math.floor(page/rounds)*10};
 }
@@ -28,5 +33,9 @@ export function recommendationQueue(current:Track|null,tracks:Track[]):Track[]{r
 export function nextRecommendation(currentId:string|undefined,tracks:Track[]):Track|undefined {const i=tracks.findIndex(t=>t.id===currentId);return tracks.length?tracks[(i+1)%tracks.length]:undefined;}
 export function trackFinished(before:{paused:boolean;position:number;duration:number;id:string}|null,after:{paused:boolean;position:number;duration:number;id:string}):boolean {
  return !!before&&!before.paused&&after.paused&&before.id===after.id&&before.duration>0&&before.position>=before.duration-2500&&after.position===0;
+}
+
+export function recommendationsForPicture(owner:string,key:string,loadingPicture:boolean,tracks:Track[]):Track[]{
+ return !loadingPicture&&owner===key?tracks:[];
 }
 

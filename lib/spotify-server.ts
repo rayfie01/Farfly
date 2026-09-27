@@ -75,12 +75,14 @@ export async function handleSpotify(req:Request):Promise<Response>{
    if(!isMood(body?.mood))return finish(json({error:'Choose a picture mood first.'},400));
    const page=body.page??0;
    if(typeof page!=='number'||!Number.isInteger(page)||page<0||page>29)return finish(json({error:'Invalid discovery page.'},400));
-   const selection=discoveryPage(body.mood,page);
+   const variation=body.variation??0;
+   if(typeof variation!=='number'||!Number.isInteger(variation)||variation<0||variation>29)return finish(json({error:'Invalid picture variation.'},400));
+   const selection=discoveryPage(body.mood,page,variation);
    const items:unknown[][]=[];
    for(const q of selection.queries){
     const r=await fetch('https://api.spotify.com/v1/search?'+new URLSearchParams({q,type:'track',limit:'10',offset:String(selection.offset)}),{headers:{Authorization:'Bearer '+access.value},cache:'no-store',signal:AbortSignal.timeout(10000)});
     if(r.status===401)return clear(json({error:'Please reconnect Spotify.'},401));
-    if(!r.ok)return finish(json({error:r.status===403?'Spotify search is unavailable for this app or account.':r.status===429?'Spotify is busy. Please wait before trying another picture.':'Could not find songs. Your current music is unchanged.'},r.status===429?429:502));
+    if(!r.ok)return finish(json({error:r.status===403?'Spotify denied song search. If this is a new account, ask the app owner to add its Spotify email to the test-user list, then reconnect.':r.status===429?'Spotify is busy. Please wait before trying another picture.':'Could not find songs. Your current music is unchanged.'},r.status===429?429:502));
     const data=await r.json() as {tracks?:{items?:unknown[]}};items.push(data.tracks?.items||[]);
    }
    const interleaved=Array.from({length:10},(_,i)=>items.flatMap(list=>list[i]?[list[i]]:[])).flat();

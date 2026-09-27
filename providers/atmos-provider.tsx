@@ -1,9 +1,9 @@
 'use client';
-import { analyzePicture } from '@/lib/picture-mood';
+import { analyzePicture, dominantMood } from '@/lib/picture-mood';
 import { useAccount } from './account-provider';
 import { createContext, useContext, useState, useRef, useEffect, useCallback, type ReactNode } from 'react';
 import { tracks, boards } from '@/mock/catalog';
-import { moodName, moodTags, rankTracks } from '@/lib/mood';
+import { moodTags, rankTracks } from '@/lib/mood';
 import { neutral, type Track, type Signal, type Session, type Pin, type Mood } from '@/lib/types';
 import { toast } from 'sonner';
 import { useVisualTheme } from './use-visual-theme';
@@ -55,7 +55,7 @@ function useAtmosState() {
   const selectionVersion = useRef(0);
   const failures = useRef(new Set<string>());
   const trackRef = useRef(current);
-  const name = focusedPicture ? moodName(mood) : 'Finding your vibe';
+  const name = focusedPicture ? ({warm:'Warm and cosy',calm:'Calm and unhurried',dreamy:'Soft and dreamy',nostalgic:'A nostalgic feeling',energetic:'Bright and energetic',cinematic:'Deep and cinematic'}[dominantMood(mood)]) : 'Finding your vibe';
   useEffect(()=>{
     // Client storage hydration is an intentional external-system synchronization.
     // oxlint-disable-next-line react/react-compiler
@@ -152,6 +152,7 @@ function enabledPinterestBoards(connected:boolean,ids:string[]){return connected
 const AtmosContext=createContext<ReturnType<typeof useAtmosState>|null>(null);
 export function AtmosProvider({children}:{children:ReactNode}) {const value=useAtmosState();return <AtmosContext.Provider value={value}>{value.engine}{children}</AtmosContext.Provider>;}
 export function useAtmos(){const value=useContext(AtmosContext);if(!value)throw new Error('AtmosProvider is required');return value;}
+
 
 
 

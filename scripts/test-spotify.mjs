@@ -77,3 +77,6 @@ globalThis.fetch=async()=>Response.json({}, {status:429});
 assert.equal((await call('recommendations',{method:'POST',headers:{origin,cookie:cookies},body:JSON.stringify({mood:'calm'})})).status,429);
 console.log('PASS: picture mood, current-track preservation, fresh queue order, natural end versus pause, deduplication, authenticated Spotify search and rate limits.');
 
+const jsonConnect=await call('connect',{method:'POST',headers:{origin,'Content-Type':'application/json'},body:'{}'});
+assert.equal(jsonConnect.status,200);assert.equal(new URL((await jsonConnect.json()).url).origin,'https://accounts.spotify.com');assert.ok(jsonConnect.headers.getSetCookie().some(c=>c.startsWith('sp_state=')));
+

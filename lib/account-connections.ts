@@ -28,7 +28,7 @@ export async function withAccountConnection(req:Request,provider:Provider,handle
  for(const c of response.headers.getSetCookie()){const pair=c.split(';')[0];const at=pair.indexOf('=');const name=pair.slice(0,at);if(names[provider].includes(name))changed[name]=pair.slice(at+1);}
  // Token material stays in the encrypted database, not provider cookies in the browser.
  const cookies=response.headers.getSetCookie().filter(c=>!names[provider].some(n=>c.startsWith(n+'=')));response.headers.delete('Set-Cookie');for(const c of cookies)response.headers.append('Set-Cookie',c);
- if(action==='connect'&&req.method==='POST'&&response.status===303)accountCookie(response,binding,await seal('oauth:'+provider,account.user.id,Date.now()+600000,key),600);
+ if(action==='connect'&&req.method==='POST'&&(response.status===303||response.status===200))accountCookie(response,binding,await seal('oauth:'+provider,account.user.id,Date.now()+600000,key),600);
  if(action==='callback')accountCookie(response,binding,'',0);
  if(action!=='connect'&&Object.keys(changed).length){
   const next={...tokens,...changed};for(const n of Object.keys(next))if(!next[n])delete next[n];

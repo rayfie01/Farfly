@@ -55,3 +55,25 @@ const {seal:pinSeal}=await import(await moduleUrl('../lib/pinterest-session.ts')
 assert.equal(await unseal(await pinSeal('access','x',Date.now()+60000,key),'access',key),null);
 console.log('PASS: Spotify PKCE, state validation, scope validation, origin guard, token cookies, refresh rotation, transient failures, revocation, logout and provider separation.');
 
+const {pictureMood,dominantMood}=await import(await moduleUrl('../lib/picture-mood.ts'));
+const {recommendationQueue,nextRecommendation,trackFinished,normalizeSpotify}=await import(await moduleUrl('../lib/spotify-discovery.ts'));
+const base={title:'',tags:[],mood:{dreamy:.2,nostalgic:.2,calm:.2,warm:.2,energetic:.2,cinematic:.2}};
+assert.equal(dominantMood(pictureMood({...base,title:'sunset beach summer'},{hue:25,saturation:40,dark:false})),'warm');
+assert.equal(dominantMood(pictureMood({...base,title:'quiet forest rain'},{hue:170,saturation:20,dark:false})),'calm');
+const old={id:'old'},fresh=[{id:'a'},{id:'b'}];
+assert.deepEqual(recommendationQueue(old,fresh),[old,...fresh]);assert.deepEqual(fresh,[{id:'a'},{id:'b'}]);
+assert.equal(nextRecommendation('old',fresh).id,'a');assert.equal(nextRecommendation('a',fresh).id,'b');
+assert.equal(trackFinished({id:'a',paused:false,position:99000,duration:100000},{id:'a',paused:true,position:0,duration:100000}),true);
+assert.equal(trackFinished({id:'a',paused:false,position:50000,duration:100000},{id:'a',paused:true,position:50000,duration:100000}),false);
+const makeTrack=(id,name='Song',artist='Artist')=>({id,name,artists:[{name:artist}],duration_ms:100000,is_playable:true,album:{images:[]}});
+const item=makeTrack('a'.repeat(22));
+assert.equal(normalizeSpotify([item,item,{...item,id:'b'.repeat(22)},{...item,id:'c'.repeat(22),is_playable:false}]).length,1);
+calls=0;globalThis.fetch=async(url,opts)=>{calls++;assert.match(url,/api.spotify.com\/v1\/search/);assert.equal(new Headers(opts.headers).get('Authorization'),'Bearer access');return Response.json({tracks:{items:[item,makeTrack('b'.repeat(22),'Other','Another')]}});};
+const rec=await call('recommendations',{method:'POST',headers:{origin,cookie:cookies},body:JSON.stringify({mood:'calm'})});
+assert.equal(rec.status,200);assert.equal((await rec.json()).tracks.length,2);assert.equal(calls,2);
+assert.equal((await call('recommendations',{method:'POST',headers:{origin,cookie:cookies},body:JSON.stringify({mood:'__proto__'})})).status,400);
+assert.equal(calls,2);
+globalThis.fetch=async()=>Response.json({}, {status:429});
+assert.equal((await call('recommendations',{method:'POST',headers:{origin,cookie:cookies},body:JSON.stringify({mood:'calm'})})).status,429);
+console.log('PASS: picture mood, current-track preservation, fresh queue order, natural end versus pause, deduplication, authenticated Spotify search and rate limits.');
+

@@ -1,4 +1,5 @@
 import { encode, seal, unseal } from './spotify-session';
+import { isMood, searches, normalizeSpotify } from './spotify-discovery';
 const origin='https://farfly.vercel.app';
 const client='639e9cc9dadb4a5f81f7962b599c40af';
 const redirect=origin+'/api/spotify/callback';
@@ -26,7 +27,7 @@ export async function handleSpotify(req:Request):Promise<Response>{
  const url=new URL(req.url),action=url.pathname.split('/').pop();
  // Reuse the existing server encryption key with a distinct authenticated domain.
  const key=process.env.SPOTIFY_SESSION_KEY||process.env.PINTEREST_SESSION_KEY||'';
- if(!['connect','callback','connection','token','play'].includes(action||''))return json({error:'Not found'},404);
+ if(!['connect','callback','connection','token','play','recommendations'].includes(action||''))return json({error:'Not found'},404);
  if(!['GET','POST'].includes(req.method))return json({error:'Method not allowed'},405);
  if(url.origin!==origin||(req.method==='POST'&&req.headers.get('origin')!==origin))return json({error:'Invalid origin'},403);
  if(!/^[a-f0-9]{64}$/i.test(key))return json({configured:false,connected:false,error:'Spotify is not configured.'},503);
@@ -36,7 +37,7 @@ export async function handleSpotify(req:Request):Promise<Response>{
   const state=encode(crypto.getRandomValues(new Uint8Array(32))),verifier=encode(crypto.getRandomValues(new Uint8Array(48)));
   const challenge=encode(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(verifier))));
   const target='https://accounts.spotify.com/authorize?'+new URLSearchParams({client_id:client,response_type:'code',redirect_uri:redirect,scope:scopes,state,code_challenge_method:'S256',code_challenge:challenge});
-  const res=new Response(null,{status:303,headers:{...headers,Location:target}});
+  const res=req.headers.get('content-type')?.includes('application/json')?json({url:target}):new Response(null,{status:303,headers:{...headers,Location:target}});
   set(res,'sp_state',await seal('state',JSON.stringify({state,verifier}),Date.now()+600000,key),600);return res;
  }
  if(action==='callback'){
@@ -55,7 +56,7 @@ export async function handleSpotify(req:Request):Promise<Response>{
    const res=finish('connected');await save(res,t,key);return res;
   }catch{return finish('failed');}
  }
- if((action==='connection'&&req.method!=='GET')||(['token','play'].includes(action!)&&req.method!=='POST'))return json({error:'Method not allowed'},405);
+ if((action==='connection'&&req.method!=='GET')||(['token','play','recommendations'].includes(action!)&&req.method!=='POST'))return json({error:'Method not allowed'},405);
  const renewed=json({});
  const finish=(res:Response)=>{for(const value of renewed.headers.getSetCookie())res.headers.append('Set-Cookie',value);return res;};
  try{
@@ -70,6 +71,18 @@ export async function handleSpotify(req:Request):Promise<Response>{
   if(!access)return json({error:'Connect Spotify first.'},401);
   if(action==='token')return finish(json({access_token:access.value}));
   const body=await req.json().catch(()=>null) as Record<string,unknown>|null;
+  if(action==='recommendations'){
+   if(!isMood(body?.mood))return finish(json({error:'Choose a picture mood first.'},400));
+   const items:unknown[][]=[];
+   for(const q of searches[body.mood]){
+    const r=await fetch('https://api.spotify.com/v1/search?'+new URLSearchParams({q,type:'track',limit:'10'}),{headers:{Authorization:'Bearer '+access.value},cache:'no-store',signal:AbortSignal.timeout(10000)});
+    if(r.status===401)return clear(json({error:'Please reconnect Spotify.'},401));
+    if(!r.ok)return finish(json({error:r.status===403?'Spotify search is unavailable for this app or account.':r.status===429?'Spotify is busy. Please wait before trying another picture.':'Could not find songs. Your current music is unchanged.'},r.status===429?429:502));
+    const data=await r.json() as {tracks?:{items?:unknown[]}};items.push(data.tracks?.items||[]);
+   }
+   const interleaved=Array.from({length:10},(_,i)=>items.flatMap(list=>list[i]?[list[i]]:[])).flat();
+   return finish(json({tracks:normalizeSpotify(interleaved),mood:body.mood}));
+  }
   if(!body||typeof body.device!=='string'||!/^[a-zA-Z0-9_-]{1,128}$/.test(body.device)||typeof body.uri!=='string'||!/^spotify:track:[a-zA-Z0-9]{22}$/.test(body.uri))return finish(json({error:'Enter a valid Spotify track link.'},400));
   const r=await fetch('https://api.spotify.com/v1/me/player/play?device_id='+encodeURIComponent(body.device),{method:'PUT',headers:{Authorization:'Bearer '+access.value,'Content-Type':'application/json'},body:JSON.stringify({uris:[body.uri]}),cache:'no-store',signal:AbortSignal.timeout(10000)});
   if(r.status===401)return clear(json({error:'Please reconnect Spotify.'},401));

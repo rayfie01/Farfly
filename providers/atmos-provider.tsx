@@ -1,8 +1,9 @@
 'use client';
+import { analyzePicture } from '@/lib/picture-mood';
 import { useAccount } from './account-provider';
 import { createContext, useContext, useState, useRef, useEffect, useCallback, type ReactNode } from 'react';
 import { tracks, boards } from '@/mock/catalog';
-import { aggregate, moodName, moodTags, rankTracks } from '@/lib/mood';
+import { moodName, moodTags, rankTracks } from '@/lib/mood';
 import { neutral, type Track, type Signal, type Session, type Pin } from '@/lib/types';
 import { toast } from 'sonner';
 import { useVisualTheme } from './use-visual-theme';
@@ -29,6 +30,9 @@ function useAtmosState() {
   const [immersive,setImmersive] = useState(false);
   const [signals,setSignals] = useState<Signal[]>([]);
   const [mood,setMood] = useState(neutral);
+  const [focusedPicture,setFocusedPicture]=useState<Pin|null>(null);
+  const [pictureBusy,setPictureBusy]=useState(false);
+  const pictureVersion=useRef(0);
   const visualTheme=useVisualTheme(mood);
   const [adaptive,setAdaptive] = useState(true);
   const [enabledBoards,setEnabledBoards] = useState<string[]>(boards);
@@ -51,7 +55,7 @@ function useAtmosState() {
   const selectionVersion = useRef(0);
   const failures = useRef(new Set<string>());
   const trackRef = useRef(current);
-  const name = signals.filter(s=>s.kind !== 'dislike').length >= 3 ? moodName(mood) : 'Finding your vibe';
+  const name = focusedPicture ? moodName(mood) : 'Finding your vibe';
   useEffect(()=>{
     // Client storage hydration is an intentional external-system synchronization.
     // oxlint-disable-next-line react/react-compiler
@@ -62,18 +66,14 @@ function useAtmosState() {
     setReady(true);
   },[storageKey]);
   useEffect(()=>{if(ready) {try {localStorage.setItem(storageKey,JSON.stringify({savedPins:savedPins.filter(id=>!id.startsWith('pinterest-')),likedPins:likedPins.filter(id=>!id.startsWith('pinterest-')),likedTracks,savedTracks,sessions,adaptive,enabledBoards}));}catch{toast.error('Storage is full. New saves may not persist.');}}},[storageKey,ready,savedPins,likedPins,likedTracks,savedTracks,sessions,adaptive,enabledBoards]);
-  useEffect(()=>{
-    if(!adaptive || signals.length<3) return;
-    const timer=setTimeout(()=>{
-      const nextMood=aggregate(signals.filter(s=>(s.pin.id.startsWith('pinterest-')?pinterest.connected&&pinterest.selectedBoards.some(id=>s.pin.board==='pinterest-'+id):enabledBoards.includes(s.pin.board))));
-      const change=Object.keys(mood).reduce((s,k)=>s+Math.abs(mood[k as keyof typeof mood]-nextMood[k as keyof typeof mood]),0);
-      if(change>.15) {
-        setMood(nextMood);
-        setQueue([trackRef.current,...rankTracks([...catalog],nextMood,likedTracks,skipped).filter(t=>t.id!==trackRef.current.id)]);
-      }
-    },800);
-    return ()=>clearTimeout(timer);
-  },[signals,catalog,adaptive,enabledBoards,likedTracks,skipped,mood,pinterest.connected,pinterest.selectedBoards]);
+  const focusPicture=async(pin:Pin)=>{
+    const version=++pictureVersion.current;
+    setFocusedPicture(pin);setPictureBusy(true);visualTheme.followPicture(pin);
+    const nextMood=await analyzePicture(pin);
+    if(version!==pictureVersion.current)return;
+    setMood(nextMood);setPictureBusy(false);
+    setQueue([trackRef.current,...rankTracks([...catalog],nextMood,likedTracks,skipped).filter(t=>t.id!==trackRef.current.id)]);
+  };
   const discoveryMood=moodTags(mood)[0];
   useEffect(()=>{
     const controller=new AbortController();
@@ -141,7 +141,7 @@ function useAtmosState() {
   // Music-only player; attribution and track metadata are provided in the player.
   // oxlint-disable-next-line jsx-a11y/media-has-caption
   const engine=<audio ref={audio} src={current.source} preload="metadata" onPlay={()=>setPlaying(true)} onPause={()=>setPlaying(false)} onPlaying={()=>setBuffering(false)} onWaiting={()=>setBuffering(true)} onCanPlay={()=>setBuffering(false)} onTimeUpdate={()=>setTime(audio.current?.currentTime || 0)} onDurationChange={()=>{const d=audio.current?.duration;if(d && Number.isFinite(d))setDuration(d);}} onEnded={()=>{intent.current=true;next();}} onError={()=>{failures.current.add(current.id);setBuffering(false);toast.error('This track is unavailable. Trying the next one.');next();}} />;
-  return {...visualTheme,catalog,savedTracks,musicStatus,pinterest,engine,current,queue,history,playing,time,duration,volume,buffering,error,immersive,setImmersive,play,pause,toggle:()=>playing?pause():void play(),next,previous,seek,setVolume,playTrack,mood,name,signal,signals,adaptive,setAdaptive,enabledBoards,setEnabledBoards,savedPins,likedPins,likedTracks,sessions,savePin,likePin,likeTrack,saveSession,openSession,clearHistory,removeSession:(id:string)=>setSessions(s=>s.filter(x=>x.id!==id))};
+  return {...visualTheme,focusedPicture,focusPicture,pictureBusy,catalog,savedTracks,musicStatus,pinterest,engine,current,queue,history,playing,time,duration,volume,buffering,error,immersive,setImmersive,play,pause,toggle:()=>playing?pause():void play(),next,previous,seek,setVolume,playTrack,mood,name,signal,signals,adaptive,setAdaptive,enabledBoards,setEnabledBoards,savedPins,likedPins,likedTracks,sessions,savePin,likePin,likeTrack,saveSession,openSession,clearHistory,removeSession:(id:string)=>setSessions(s=>s.filter(x=>x.id!==id))};
 }
 function enabledPinterestBoards(connected:boolean,ids:string[]){return connected?ids.map(id=>'pinterest-'+id):[];}
 const AtmosContext=createContext<ReturnType<typeof useAtmosState>|null>(null);
